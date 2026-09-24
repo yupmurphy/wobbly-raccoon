@@ -92,10 +92,22 @@ window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', layout);
 
 // ---------------------------- STATE ---------------------------------
-const STATE = { READY: 'ready', PLAYING: 'playing', DEAD: 'dead' };
-let state = STATE.READY;
+const STATE = { MENU: 'menu', READY: 'ready', PLAYING: 'playing', DEAD: 'dead' };
+let state = STATE.MENU;
 
-let raccoon, obstacles, particles, score, best, deadTime, shake;
+let raccoon, obstacles, particles, starPops, score, best, runStars, deadTime, shake;
+
+// Stars are kept across runs - one per pillar cleared. They are the seed of
+// an in-game currency, so they are stored separately from the best score.
+let stars = 0;
+
+function loadStars() {
+  try { return parseInt(localStorage.getItem('wobbly-raccoon-stars') || '0', 10) || 0; }
+  catch (e) { return 0; }
+}
+function saveStars() {
+  try { localStorage.setItem('wobbly-raccoon-stars', String(stars)); } catch (e) {}
+}
 
 // The storage key still says "jetpack" on purpose: renaming it would wipe
 // the best score already saved in the browser. It is invisible to players.
@@ -117,8 +129,11 @@ function reset() {
   };
   obstacles = [];
   particles = [];
+  starPops = [];
   score = 0;
+  runStars = 0;
   best = loadBest();
+  stars = loadStars();
   deadTime = 0;
   shake = 0;
 
@@ -159,15 +174,35 @@ function addObstacle(x) {
 // (the OS keeps re-firing keydown while a key is held)
 const keysDown = {};
 
+// Button rectangles are derived from the current world size every time they
+// are needed, so they follow the layout on any screen instead of being fixed.
+function startButton() {
+  const w = 250, h = 78;
+  return { x: W / 2 - w / 2, y: H * 0.57, w: w, h: h };
+}
+
+function deadButtons() {
+  const w = 139, h = 58, gap = 16;
+  const y = H * 0.45 + 62;
+  return [
+    { x: W / 2 - w - gap / 2, y: y, w: w, h: h, label: 'RETRY', action: 'retry' },
+    { x: W / 2 + gap / 2,     y: y, w: w, h: h, label: 'MENU',  action: 'menu'  },
+  ];
+}
+
+function inside(r, p) {
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
+
+function goToMenu() { reset(); state = STATE.MENU; }
+function startRun()  { reset(); state = STATE.READY; }
+
 function press() {
   if (state === STATE.READY) {
     state = STATE.PLAYING;
     boost();
   } else if (state === STATE.PLAYING) {
     boost();
-  } else if (state === STATE.DEAD && deadTime > 0.8) {
-    reset();
-    state = STATE.READY;
   }
 }
 
@@ -178,14 +213,49 @@ function boost() {
   sound('boost');
 }
 
-cv.addEventListener('pointerdown', function (e) { e.preventDefault(); press(); });
+// where a click landed, in world units
+function pointerWorld(e) {
+  const r = cv.getBoundingClientRect();
+  const px = (e.clientX - r.left) * (cv.width  / r.width);
+  const py = (e.clientY - r.top)  * (cv.height / r.height);
+  return { x: (px - viewX) / viewScale, y: (py - viewY) / viewScale };
+}
+
+cv.addEventListener('pointerdown', function (e) {
+  e.preventDefault();
+  const p = pointerWorld(e);
+
+  if (state === STATE.MENU) {
+    if (inside(startButton(), p)) startRun();
+    return;
+  }
+
+  if (state === STATE.DEAD) {
+    // ignore the tap that was still in flight when he crashed
+    if (deadTime < 0.5) return;
+    for (const b of deadButtons()) {
+      if (inside(b, p)) {
+        if (b.action === 'retry') startRun(); else goToMenu();
+        return;
+      }
+    }
+    return;
+  }
+
+  press();
+});
 
 window.addEventListener('keydown', function (e) {
+  if (e.code === 'Escape' && state === STATE.DEAD) { goToMenu(); return; }
+
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
     if (e.repeat || keysDown[e.code]) return;   // key is being held - ignore
     keysDown[e.code] = true;
-    press();
+
+    if (state === STATE.MENU) startRun();
+    else if (state === STATE.DEAD) { if (deadTime > 0.5) startRun(); }
+    else press();
   }
 });
 
@@ -329,8 +399,11 @@ function update(dt) {
     if (a.x < viewLeft - 4) { a.x = viewRight + 4; }
   }
 
-  if (state === STATE.READY) {
-    raccoon.y = H * 0.45 + Math.sin(performance.now() / 300) * 10;
+  if (state === STATE.MENU || state === STATE.READY) {
+    // he idles in place; on the menu he sits centred, above the button
+    const restY = state === STATE.MENU ? H * 0.40 : H * 0.45;
+    if (state === STATE.MENU) raccoon.x = W / 2 - 6;
+    raccoon.y = restY + Math.sin(performance.now() / 300) * 10;
     raccoon.angle = -0.12 + Math.sin(performance.now() / 300) * 0.05;
     raccoon.sinceBoost = 99;
   }
@@ -359,6 +432,10 @@ function update(dt) {
       if (!o.scored && o.x + CFG.obstacleWidth < raccoon.x) {
         o.scored = true;
         score++;
+        runStars++;
+        stars++;
+        saveStars();
+        starPops.push({ x: raccoon.x + 26, y: raccoon.y - 30, life: 0 });
         sound('point');
       }
     }
@@ -395,6 +472,14 @@ function update(dt) {
     }
   }
   particles = particles.filter(function (p) { return p.life < p.span; });
+
+  // the little star that pops out when a pillar is cleared
+  for (const s of starPops) {
+    s.life += dt;
+    s.y -= 46 * dt;
+    s.x -= CFG.scrollSpeed * 0.25 * dt;
+  }
+  starPops = starPops.filter(function (s) { return s.life < 0.9; });
 }
 
 function hitSomething() {
@@ -426,6 +511,7 @@ function crash() {
   raccoon.vy = -180;
   sound('crash');
   if (score > best) { best = score; saveBest(best); }
+  saveStars();
 }
 
 // ----------------------------- DRAW ---------------------------------
@@ -450,7 +536,9 @@ function draw() {
   drawAsh();
   drawParticles();
   drawRider();
+  drawStarPops();
   drawGround();
+  if (state === STATE.MENU) drawMenuRuins();
 
   ctx.restore();
   drawUI();
@@ -843,6 +931,91 @@ function cross(x, y, r) {
   ctx.stroke();
 }
 
+// ----------------------------- STARS --------------------------------
+const STAR_GOLD = '#f5c451';
+
+function starPath(x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rad = i % 2 === 0 ? r : r * 0.45;
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    const px = x + Math.cos(a) * rad;
+    const py = y + Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function drawStar(x, y, r, fill, outlineWidth) {
+  starPath(x, y, r);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (outlineWidth) {
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = outlineWidth;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+}
+
+// one star floating up out of the pillar you just cleared
+function drawStarPops() {
+  for (const s of starPops) {
+    const t = s.life / 0.9;
+    ctx.globalAlpha = 1 - t * t;
+    drawStar(s.x, s.y, 11 * (1 + t * 0.35), STAR_GOLD, 2.5);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ------------------------- MENU SCENERY -----------------------------
+// Ruined blocks framing the left and right edges, leaving the middle of
+// the screen clear for the button. Fixed shapes, not random, so the menu
+// looks the same every time it opens.
+const MENU_RUINS = [
+  { side: -1, off:  -6, w: 104, h: 0.52, cut: 0.34 },
+  { side: -1, off:  86, w:  66, h: 0.33, cut: 0.62 },
+  { side: -1, off: 140, w:  52, h: 0.42, cut: 0.18 },
+  { side:  1, off:  -6, w: 112, h: 0.56, cut: 0.40 },
+  { side:  1, off:  92, w:  60, h: 0.36, cut: 0.24 },
+  { side:  1, off: 140, w:  48, h: 0.27, cut: 0.58 },
+];
+
+function drawMenuRuins() {
+  const groundY = HORIZON + 6;
+
+  for (const b of MENU_RUINS) {
+    const x = b.side < 0 ? viewLeft + b.off : viewRight - b.off - b.w;
+    const top = groundY - b.h * (groundY - viewTop);
+
+    // body, with a chunk torn off the roof
+    ctx.beginPath();
+    ctx.moveTo(x, groundY);
+    ctx.lineTo(x, top + 14);
+    ctx.lineTo(x + b.w * b.cut, top);
+    ctx.lineTo(x + b.w * (b.cut + 0.18), top + 22);
+    ctx.lineTo(x + b.w, top + 8);
+    ctx.lineTo(x + b.w, groundY);
+    ctx.closePath();
+    ctx.fillStyle = '#1a1622';
+    ctx.fill();
+
+    // a few windows, most of them dead, one or two still burning
+    const cols = Math.max(1, Math.floor(b.w / 26));
+    const rows = Math.max(1, Math.floor((groundY - top) / 34));
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        const wx = x + 10 + c * 26;
+        const wy = top + 34 + r * 34;
+        if (wy > groundY - 18 || wx + 12 > x + b.w - 6) continue;
+        const lit = ((c * 7 + r * 13 + b.off) % 11) === 0;
+        ctx.fillStyle = lit ? 'rgba(226,142,84,.55)' : 'rgba(58,48,66,.7)';
+        ctx.fillRect(wx, wy, 12, 17);
+      }
+    }
+  }
+}
+
 function drawGround() {
   const y = HORIZON;
   const wide = viewRight - viewLeft;
@@ -896,47 +1069,102 @@ function drawGround() {
   }
 }
 
+function drawButton(r, label, tone) {
+  const warm = tone === 'primary';
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.beginPath(); roundRectPath(r.x, r.y + 5, r.w, r.h, 14); ctx.fill();
+
+  const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+  if (warm) { g.addColorStop(0, '#f08a4b'); g.addColorStop(1, '#d1592c'); }
+  else      { g.addColorStop(0, '#5d5468'); g.addColorStop(1, '#403a4c'); }
+  ctx.fillStyle = g;
+  ctx.beginPath(); roundRectPath(r.x, r.y, r.w, r.h, 14); ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // a highlight along the top edge, so it reads as a raised key
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.beginPath(); roundRectPath(r.x + 6, r.y + 5, r.w - 12, r.h * 0.34, 9); ctx.fill();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  outlinedText(label, r.x + r.w / 2, r.y + r.h / 2 + 1,
+               'bold ' + Math.round(r.h * 0.40) + 'px system-ui', '#fff', OUTLINE, 5);
+  ctx.textBaseline = 'alphabetic';
+}
+
+// the star counter, drawn as an icon plus a number
+function starCount(x, y, value, size) {
+  ctx.textAlign = 'left';
+  drawStar(x, y, size, STAR_GOLD, 2.5);
+  outlinedText(String(value), x + size + 9, y + size * 0.56,
+               'bold ' + Math.round(size * 1.7) + 'px system-ui', '#fff', '#1d2b33', 6);
+  ctx.textAlign = 'center';
+}
+
 function drawUI() {
   ctx.textAlign = 'center';
 
   if (state === STATE.PLAYING || state === STATE.DEAD) {
     outlinedText(String(score), W / 2, 96, 'bold 64px system-ui', '#fff', '#1d2b33', 7);
+    starCount(22, 52, stars, 13);
+  }
+
+  if (state === STATE.MENU) {
+    outlinedText('WOBBLY', W / 2, H * 0.17, 'bold 54px system-ui', '#fff', '#1d2b33', 8);
+    outlinedText('RACCOON', W / 2, H * 0.17 + 52, 'bold 54px system-ui', '#f0a45b', '#1d2b33', 8);
+
+    drawButton(startButton(), 'START', 'primary');
+
+    // what you have collected so far
+    const sy = H * 0.57 + 78 + 44;
+    ctx.textAlign = 'center';
+    starCount(W / 2 - 42, sy, stars, 15);
+    outlinedText('Best  ' + best, W / 2, sy + 52,
+                 'bold 20px system-ui', '#e7e2da', '#1d2b33', 5);
   }
 
   if (state === STATE.READY) {
-    outlinedText('WOBBLY RACCOON', W / 2, H * 0.30, 'bold 36px system-ui', '#fff', '#1d2b33', 7);
-    panel(W / 2, H * 0.66, 330, 150);
-    ctx.fillStyle = '#2b3a44';
-    ctx.font = 'bold 21px system-ui';
-    ctx.fillText('Tap to fire the rocket', W / 2, H * 0.66 - 22);
-    ctx.font = '17px system-ui';
-    ctx.fillStyle = '#5b6b76';
-    ctx.fillText('click / tap / SPACE', W / 2, H * 0.66 + 10);
-    ctx.fillText('Best: ' + best, W / 2, H * 0.66 + 40);
+    const pulse = 0.6 + Math.sin(performance.now() / 260) * 0.4;
+    ctx.globalAlpha = pulse;
+    outlinedText('TAP TO FLY', W / 2, H * 0.62, 'bold 34px system-ui', '#fff', '#1d2b33', 7);
+    ctx.globalAlpha = 1;
+    starCount(22, 52, stars, 13);
   }
 
   if (state === STATE.DEAD) {
-    panel(W / 2, H * 0.45, 300, 210);
-    ctx.fillStyle = '#2b3a44';
-    ctx.font = 'bold 34px system-ui';
-    ctx.fillText('You crashed!', W / 2, H * 0.45 - 55);
-    ctx.font = '18px system-ui';
-    ctx.fillStyle = '#5b6b76';
-    ctx.fillText('Score', W / 2, H * 0.45 - 20);
-    ctx.font = 'bold 42px system-ui';
-    ctx.fillStyle = '#2b3a44';
-    ctx.fillText(String(score), W / 2, H * 0.45 + 18);
-    ctx.font = '18px system-ui';
-    ctx.fillStyle = '#5b6b76';
-    ctx.fillText('Best: ' + best, W / 2, H * 0.45 + 50);
+    const cy = H * 0.45;
+    panel(W / 2, cy, 330, 250);
 
-    if (deadTime > 0.8) {
-      const pulse = 0.65 + Math.sin(performance.now() / 220) * 0.35;
-      ctx.globalAlpha = pulse;
-      ctx.fillStyle = '#e07b39';
-      ctx.font = 'bold 21px system-ui';
-      ctx.fillText('Tap to fly again', W / 2, H * 0.45 + 88);
-      ctx.globalAlpha = 1;
+    ctx.fillStyle = '#2b3a44';
+    ctx.font = 'bold 32px system-ui';
+    ctx.fillText('You crashed!', W / 2, cy - 78);
+
+    ctx.font = '17px system-ui';
+    ctx.fillStyle = '#5b6b76';
+    ctx.fillText('Score', W / 2 - 72, cy - 46);
+    ctx.fillText('Best',  W / 2 + 72, cy - 46);
+    ctx.font = 'bold 38px system-ui';
+    ctx.fillStyle = '#2b3a44';
+    ctx.fillText(String(score), W / 2 - 72, cy - 10);
+    ctx.fillText(String(best),  W / 2 + 72, cy - 10);
+
+    // stars earned this run
+    ctx.textAlign = 'center';
+    drawStar(W / 2 - 30, cy + 22, 13, STAR_GOLD, 2.5);
+    ctx.fillStyle = '#2b3a44';
+    ctx.font = 'bold 24px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('+' + runStars, W / 2 - 12, cy + 31);
+    ctx.textAlign = 'center';
+
+    if (deadTime > 0.5) {
+      const b = deadButtons();
+      drawButton(b[0], 'RETRY', 'primary');
+      drawButton(b[1], 'MENU', 'plain');
     }
   }
 }
