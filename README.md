@@ -6,25 +6,27 @@ no dependencies at runtime.
 
 ## Play it
 
-Open `www/index.html` in a browser. That is the whole game.
+Open `docs/index.html` in a browser. That is the whole game.
 
 For the service worker (offline play) to register, it needs to be served over
 http rather than opened from disk:
 
 ```
-py -m http.server 8000 -d www
+py -m http.server 8000 -d docs
 ```
 
 ## How it is put together
 
 ```
-www/          the entire game - this is also what gets hosted
+docs/         the entire game - named "docs" because GitHub Pages will
+              only publish from the repository root or a folder with
+              exactly that name
   index.html  page shell, mobile meta, service worker registration
   game.js     all of it: physics, drawing, sound, layout
   sw.js       offline cache
   manifest.webmanifest   makes it installable on a phone
 resources/    source art the Android icons are generated from
-android/      Capacitor project that wraps www/ into a native app
+android/      Capacitor project that wraps docs/ into a native app
 ```
 
 ### The world
