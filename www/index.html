@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Wobbly Raccoon</title>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#15181f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wobbly Raccoon">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #15181f;
+    overflow: hidden;
+    overscroll-behavior: none;          /* no pull-to-refresh mid-game */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* The canvas is the whole screen. Its pixel size is set by layout()
+     in game.js, at the display's real density, so nothing is stretched. */
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <script src="game.js"></script>
+  <script>
+    // Offline support for the web/PWA build. Skipped inside the native app,
+    // where the files are already local and the cache would only serve stale
+    // copies after a rebuild. Also skipped when opened straight from disk.
+    if (!window.Capacitor &&
+        'serviceWorker' in navigator &&
+        location.protocol.startsWith('http')) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
+</body>
+</html>

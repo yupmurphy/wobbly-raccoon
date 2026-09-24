@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# Android build output
+android/build/
+android/app/build/
+android/.gradle/
+android/captures/
+android/.idea/
+*.iml
+
+# machine specific - points at this computer's SDK
+android/local.properties
+
+# built app, rebuilt from source with: npx cap sync && gradlew assembleDebug
+*.apk
+*.aab
+
+# editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Claude Code local settings (contain absolute paths)
+.claude/

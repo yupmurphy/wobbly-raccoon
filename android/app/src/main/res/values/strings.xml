@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Wobbly Raccoon</string>
+    <string name="title_activity_main">Wobbly Raccoon</string>
+    <string name="package_name">com.moonlittato.wobblyraccoon</string>
+    <string name="custom_url_scheme">com.moonlittato.wobblyraccoon</string>
+</resources>
