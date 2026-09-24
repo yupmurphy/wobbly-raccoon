@@ -16,6 +16,10 @@ android/local.properties
 *.apk
 *.aab
 
+# ...except the published one: GitHub Pages serves it as the download link,
+# and docs/version.json points the in-app update check at it
+!docs/*.apk
+
 # editor / OS noise
 .DS_Store
 Thumbs.db

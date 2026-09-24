@@ -109,6 +109,78 @@ function saveStars() {
   try { localStorage.setItem('wobbly-raccoon-stars', String(stars)); } catch (e) {}
 }
 
+// ---------------------------- SOUND SWITCH ---------------------------
+let muted = false;
+try { muted = localStorage.getItem('wobbly-raccoon-muted') === '1'; } catch (e) {}
+
+function toggleMute() {
+  muted = !muted;
+  try { localStorage.setItem('wobbly-raccoon-muted', muted ? '1' : '0'); } catch (e) {}
+}
+
+// ---------------------------- THIS BUILD -----------------------------
+// Bumped together with versionCode/versionName in android/app/build.gradle
+// and with docs/version.json, which is what the update check reads.
+const BUILD = { code: 3, name: '1.2' };
+
+const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
+const APK_URL     = SITE + 'WobblyRaccoon.apk';
+const VERSION_URL = SITE + 'version.json';
+
+// Capacitor only exists inside the packaged Android app, so this tells the
+// two builds apart: the web page offers the download, the app offers the
+// update check.
+const IS_APP = !!window.Capacitor;
+
+const updateCheck = { busy: false, message: '', available: null };
+
+function openLink(url) {
+  try {
+    const w = window.open(url, '_blank');
+    if (!w) location.href = url;
+  } catch (e) {
+    location.href = url;
+  }
+}
+
+function checkForUpdate() {
+  if (updateCheck.busy) return;
+  updateCheck.busy = true;
+  updateCheck.message = '';
+
+  fetch(VERSION_URL, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (info) {
+      updateCheck.busy = false;
+      if (info && info.versionCode > BUILD.code) {
+        updateCheck.available = info;
+        updateCheck.message = 'Version ' + info.versionName + ' is out';
+      } else {
+        updateCheck.message = 'You are up to date';
+      }
+    })
+    .catch(function () {
+      updateCheck.busy = false;
+      updateCheck.message = 'Could not reach the server';
+    });
+}
+
+function secondaryLabel() {
+  if (!IS_APP) return 'DOWNLOAD APP';
+  if (updateCheck.available) return 'GET ' + updateCheck.available.versionName;
+  if (updateCheck.busy) return 'CHECKING...';
+  return 'CHECK FOR UPDATES';
+}
+
+function secondaryAction() {
+  if (!IS_APP) { openLink(APK_URL); return; }
+  if (updateCheck.available) {
+    openLink(updateCheck.available.url || APK_URL);
+    return;
+  }
+  checkForUpdate();
+}
+
 // The storage key still says "jetpack" on purpose: renaming it would wipe
 // the best score already saved in the browser. It is invisible to players.
 function loadBest() {
@@ -178,7 +250,19 @@ const keysDown = {};
 // are needed, so they follow the layout on any screen instead of being fixed.
 function startButton() {
   const w = 250, h = 78;
-  return { x: W / 2 - w / 2, y: H * 0.57, w: w, h: h };
+  return { x: W / 2 - w / 2, y: H * 0.53, w: w, h: h };
+}
+
+function secondaryButton() {
+  const w = 218, h = 56;
+  const s = startButton();
+  return { x: W / 2 - w / 2, y: s.y + s.h + 16, w: w, h: h };
+}
+
+// small round speaker toggle in the menu's top corner
+function muteButton() {
+  const r = 26;
+  return { x: W - r * 2 - 16, y: 18, w: r * 2, h: r * 2 };
 }
 
 function deadButtons() {
@@ -226,7 +310,9 @@ cv.addEventListener('pointerdown', function (e) {
   const p = pointerWorld(e);
 
   if (state === STATE.MENU) {
-    if (inside(startButton(), p)) startRun();
+    if (inside(muteButton(), p))      { toggleMute(); return; }
+    if (inside(secondaryButton(), p)) { secondaryAction(); return; }
+    if (inside(startButton(), p))     { startRun(); return; }
     return;
   }
 
@@ -289,6 +375,7 @@ function blip(type, f0, f1, delay, dur, vol) {
 }
 
 function sound(kind) {
+  if (muted) return;
   try {
     if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
     if (audio.state === 'suspended') audio.resume();
@@ -1096,6 +1183,53 @@ function drawButton(r, label, tone) {
   ctx.textBaseline = 'alphabetic';
 }
 
+// round speaker toggle: filled when sound is on, struck through when off
+function drawMuteButton(r) {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = r.w / 2;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+  ctx.fillStyle = muted ? 'rgba(32,28,40,.75)' : 'rgba(64,58,76,.85)';
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  const c = muted ? '#8c8598' : '#f0e8dc';
+
+  // speaker body: a small box with a cone
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, cy - 4);
+  ctx.lineTo(cx - 4,  cy - 4);
+  ctx.lineTo(cx + 3,  cy - 11);
+  ctx.lineTo(cx + 3,  cy + 11);
+  ctx.lineTo(cx - 4,  cy + 4);
+  ctx.lineTo(cx - 10, cy + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  if (muted) {
+    ctx.strokeStyle = '#e06a52';
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - 13, cy - 13);
+    ctx.lineTo(cx + 13, cy + 13);
+    ctx.stroke();
+  } else {
+    // two sound waves
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 2; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + 4, cy, 7 + i * 5, -0.85, 0.85);
+      ctx.stroke();
+    }
+  }
+}
+
 // the star counter, drawn as an icon plus a number
 function starCount(x, y, value, size) {
   ctx.textAlign = 'left';
@@ -1114,17 +1248,27 @@ function drawUI() {
   }
 
   if (state === STATE.MENU) {
-    outlinedText('WOBBLY', W / 2, H * 0.17, 'bold 54px system-ui', '#fff', '#1d2b33', 8);
-    outlinedText('RACCOON', W / 2, H * 0.17 + 52, 'bold 54px system-ui', '#f0a45b', '#1d2b33', 8);
+    outlinedText('WOBBLY', W / 2, H * 0.15, 'bold 54px system-ui', '#fff', '#1d2b33', 8);
+    outlinedText('RACCOON', W / 2, H * 0.15 + 52, 'bold 54px system-ui', '#f0a45b', '#1d2b33', 8);
 
-    drawButton(startButton(), 'START', 'primary');
-
-    // what you have collected so far
-    const sy = H * 0.57 + 78 + 44;
+    // totals sit above the buttons, on one line
+    const s = startButton();
     ctx.textAlign = 'center';
-    starCount(W / 2 - 42, sy, stars, 15);
-    outlinedText('Best  ' + best, W / 2, sy + 52,
-                 'bold 20px system-ui', '#e7e2da', '#1d2b33', 5);
+    starCount(W / 2 - 74, s.y - 34, stars, 14);
+    outlinedText('BEST  ' + best, W / 2 + 52, s.y - 24,
+                 'bold 21px system-ui', '#e7e2da', '#1d2b33', 5);
+
+    drawButton(s, 'START', 'primary');
+
+    const sec = secondaryButton();
+    drawButton(sec, secondaryLabel(), 'plain');
+
+    if (updateCheck.message) {
+      outlinedText(updateCheck.message, W / 2, sec.y + sec.h + 26,
+                   '17px system-ui', '#d9d2c8', '#1d2b33', 4);
+    }
+
+    drawMuteButton(muteButton());
   }
 
   if (state === STATE.READY) {
