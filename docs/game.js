@@ -194,7 +194,7 @@ function jumpHeight() { return (curBoost * curBoost) / (2 * curGravity); }
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 4, name: '1.4' };
+const BUILD = { code: 5, name: '1.5' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';
@@ -343,10 +343,18 @@ function gearButton() {
   return { x: m.x - m.w - 12, y: m.y, w: m.w, h: m.h };
 }
 
-// the pause key, tucked in the corner during a run
+// The pause key during a run. Kept clear of the top corner: up there it
+// sits under the notch and the notification bar and is awkward to reach
+// one-handed on a phone.
 function pauseButton() {
-  const r = 23;
-  return { x: W - r * 2 - 14, y: 16, w: r * 2, h: r * 2 };
+  const r = 27;
+  return { x: W - r * 2 - 28, y: 74, w: r * 2, h: r * 2 };
+}
+
+// the star counter rides at the same height as the pause key
+function hudStarY() {
+  const p = pauseButton();
+  return p.y + p.h / 2;
 }
 
 // ------------------------- SETTINGS SCREEN ---------------------------
@@ -1494,7 +1502,7 @@ function drawUI() {
 
   if (state === STATE.PLAYING || state === STATE.PAUSED || state === STATE.DEAD) {
     outlinedText(String(score), W / 2, 96, 'bold 64px system-ui', '#fff', '#1d2b33', 7);
-    starCount(22, 52, stars, 13);
+    starCount(32, hudStarY(), stars, 14);
   }
 
   if (state === STATE.PLAYING) drawPauseKey(pauseButton());
@@ -1532,7 +1540,7 @@ function drawUI() {
     ctx.globalAlpha = pulse;
     outlinedText('TAP TO FLY', W / 2, H * 0.62, 'bold 34px system-ui', '#fff', '#1d2b33', 7);
     ctx.globalAlpha = 1;
-    starCount(22, 52, stars, 13);
+    starCount(32, hudStarY(), stars, 14);
   }
 
   if (state === STATE.DEAD) {
