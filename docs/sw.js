@@ -1,7 +1,7 @@
 // Service worker: keeps the game playable with no connection at all.
 // Bump CACHE whenever you change game.js or index.html, otherwise phones
 // that already installed the game keep serving the old copy.
-const CACHE = 'wobbly-raccoon-v4';
+const CACHE = 'wobbly-raccoon-v5';
 
 const ASSETS = [
   './',

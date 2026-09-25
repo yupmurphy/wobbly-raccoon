@@ -213,11 +213,11 @@ const SKINS = {
     dark: '#5d3320', paw: '#3b2418', earInner: '#fff2e4', shade: '#c25c2c',
     nose: '#2a1a12', face: 'panda', tail: 'ringed',
   },
-  coati: {
-    name: 'COATI', price: 1,
-    fur: '#9a7354', furMid: '#b08a68', furLight: '#ead9c4',
-    dark: '#4a3729', paw: '#3d2d22', earInner: '#b08a68', shade: '#7e5c42',
-    nose: '#2a1d15', face: 'bandit', tail: 'ringed',
+  koala: {
+    name: 'KOALA', price: 1,
+    fur: '#9aa3ad', furMid: '#b4bdc7', furLight: '#e7ecf1',
+    dark: '#5c6570', paw: '#4a525c', earInner: '#e7ecf1', shade: '#7f8893',
+    nose: '#3a3138', face: 'plain', tail: 'none', ears: 'round', bigNose: true,
   },
 };
 
@@ -318,7 +318,7 @@ function theme() { return THEMES[equipped.theme] || THEMES.ruins; }
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 6, name: '1.6' };
+const BUILD = { code: 7, name: '1.7' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';
@@ -459,7 +459,7 @@ function secondaryButton() {
 // small round toggles in the menu's top corner
 function muteButton() {
   const r = 26;
-  return { x: W - r * 2 - 16, y: 18, w: r * 2, h: r * 2 };
+  return { x: W - r * 2 - 22, y: 74, w: r * 2, h: r * 2 };
 }
 
 function gearButton() {
@@ -923,8 +923,8 @@ function update(dt) {
 
   if (state === STATE.MENU || state === STATE.SETTINGS || state === STATE.SHOP) {
     // parked on the ground, rocket idle, facing the pillar ahead of him
-    raccoon.x = W * 0.40;
-    raccoon.y = HORIZON - 32;
+    raccoon.x = W * 0.46;
+    raccoon.y = HORIZON - 44;
     raccoon.angle = 0;
     raccoon.vy = 0;
     raccoon.sinceBoost = 99;
@@ -1074,7 +1074,7 @@ function draw() {
   if (parked) {
     drawMenuRuins();
     drawMenuPillar();
-    drawRider();
+    drawStandingRider();
   }
 
   ctx.restore();
@@ -1228,13 +1228,16 @@ const OUTLINE_W = 3;
 // The character palette is whatever skin is equipped. useSkin() refreshes
 // these before anything draws the animal, so one set of drawing code
 // produces every species in the shop.
-let FUR, FUR_LIGHT, FUR_MID, FUR_SHADE, MASK, PAW, EAR_IN, NOSE, FACE, TAIL;
+let FUR, FUR_LIGHT, FUR_MID, FUR_SHADE, MASK, PAW, EAR_IN, NOSE;
+let FACE, TAIL, EARS, BIG_NOSE;
 
 function useSkin(s) {
   s = s || skin();
   FUR = s.fur; FUR_LIGHT = s.furLight; FUR_MID = s.furMid; FUR_SHADE = s.shade;
   MASK = s.dark; PAW = s.paw; EAR_IN = s.earInner; NOSE = s.nose;
   FACE = s.face; TAIL = s.tail;
+  EARS = s.ears || 'pointed';
+  BIG_NOSE = !!s.bigNose;
 }
 
 const BLUSH     = '#f18ca8';
@@ -1348,6 +1351,8 @@ function drawFlame(thrust) {
 }
 
 function drawTail(drift) {
+  if (TAIL === 'none') return;   // koalas have nothing to show back there
+
   // drawn tip first, so each segment overlaps the previous one cleanly
   const swing = drift * 0.18;
   ctx.save();
@@ -1437,20 +1442,28 @@ function drawRaccoonBody(drift) {
 function drawRaccoonHead() {
   const hx = 7, hy = -16;   // head centre
 
-  // ears: rounded, with a darker inner ear
-  ctx.beginPath();
-  ctx.moveTo(hx - 11, hy - 4);
-  ctx.quadraticCurveTo(hx - 14, hy - 17, hx - 1, hy - 12);
-  ctx.closePath();
-  outlined(FUR);
-  flatOval(hx - 8, hy - 8.5, 2.8, 3.6, -0.5, EAR_IN);
+  if (EARS === 'round') {
+    // koala: big fluffy discs sticking out either side of the head
+    oval(hx - 11, hy - 6, 8.5, 8.5, 0, FUR);
+    flatOval(hx - 11, hy - 6, 5, 5, 0, EAR_IN);
+    oval(hx + 13, hy - 7, 8.5, 8.5, 0, FUR);
+    flatOval(hx + 13, hy - 7, 5, 5, 0, EAR_IN);
+  } else {
+    // ears: rounded triangles, with a darker inner ear
+    ctx.beginPath();
+    ctx.moveTo(hx - 11, hy - 4);
+    ctx.quadraticCurveTo(hx - 14, hy - 17, hx - 1, hy - 12);
+    ctx.closePath();
+    outlined(FUR);
+    flatOval(hx - 8, hy - 8.5, 2.8, 3.6, -0.5, EAR_IN);
 
-  ctx.beginPath();
-  ctx.moveTo(hx + 4, hy - 12);
-  ctx.quadraticCurveTo(hx + 15, hy - 18, hx + 12, hy - 4);
-  ctx.closePath();
-  outlined(FUR);
-  flatOval(hx + 9.5, hy - 9.5, 2.8, 3.6, 0.5, EAR_IN);
+    ctx.beginPath();
+    ctx.moveTo(hx + 4, hy - 12);
+    ctx.quadraticCurveTo(hx + 15, hy - 18, hx + 12, hy - 4);
+    ctx.closePath();
+    outlined(FUR);
+    flatOval(hx + 9.5, hy - 9.5, 2.8, 3.6, 0.5, EAR_IN);
+  }
 
   // head
   oval(hx, hy, 12, 11.5, 0, FUR_MID);
@@ -1459,7 +1472,7 @@ function drawRaccoonHead() {
 
   // Facial markings, the main thing that tells the species apart.
   if (FACE === 'bandit') {
-    // raccoon and coati: one dark band across both eyes
+    // raccoon: one dark band across both eyes
     ctx.beginPath();
     ctx.ellipse(hx - 4.5, hy - 2.5, 6, 5.4, -0.12, 0, Math.PI * 2);
     ctx.fillStyle = MASK; ctx.fill();
@@ -1510,12 +1523,20 @@ function drawRaccoonHead() {
 
   // snout and nose
   flatOval(hx + 1, hy + 6, 6, 4.2, 0, FUR_LIGHT);
-  ctx.beginPath();
-  ctx.moveTo(hx - 1.6, hy + 4.4);
-  ctx.lineTo(hx + 3.6, hy + 4.4);
-  ctx.quadraticCurveTo(hx + 1, hy + 8, hx - 1.6, hy + 4.4);
-  ctx.closePath();
-  ctx.fillStyle = NOSE; ctx.fill();
+  if (BIG_NOSE) {
+    // koala: the nose is the face
+    ctx.beginPath();
+    ctx.ellipse(hx + 2, hy + 5.5, 5.4, 6.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = NOSE; ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2; ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(hx - 1.6, hy + 4.4);
+    ctx.lineTo(hx + 3.6, hy + 4.4);
+    ctx.quadraticCurveTo(hx + 1, hy + 8, hx - 1.6, hy + 4.4);
+    ctx.closePath();
+    ctx.fillStyle = NOSE; ctx.fill();
+  }
 
   // little smile
   ctx.strokeStyle = NOSE;
@@ -1583,6 +1604,65 @@ const MENU_RUINS = [
   { side:  1, off:  92, w:  60, h: 0.36, cut: 0.24 },
   { side:  1, off: 140, w:  48, h: 0.27, cut: 0.58 },
 ];
+
+// The menu pose: standing on the ground, facing the pillar ahead, rocket
+// held upright in his right hand. Deliberately nothing like the in-game
+// pose, where he is sitting astride the rocket in flight.
+function drawStandingRider() {
+  useSkin();
+
+  ctx.save();
+  ctx.translate(raccoon.x, raccoon.y);
+  ctx.scale(1.15, 1.15);          // a touch larger, he is the centrepiece
+
+  // tail hanging down behind him
+  if (TAIL === 'bushy') {
+    oval(-20, 30, 10, 11, 0, FUR);
+    oval(-22, 18, 11, 11.5, 0, FUR);
+    oval(-20, 6, 10, 10, 0, FUR_MID);
+  } else if (TAIL !== 'none') {
+    oval(-18, 34, 6, 6, 0, FUR_LIGHT);
+    oval(-19, 25, 6.6, 6.6, 0, MASK);
+    oval(-18, 16, 7.2, 7.2, 0, FUR_LIGHT);
+    oval(-15, 8, 7.6, 7.6, 0, FUR);
+  }
+
+  // the rocket, stood on its fins at his right side: the same art as in
+  // flight, simply turned to point at the sky
+  ctx.save();
+  ctx.translate(34, 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.translate(0, -16);
+  ctx.scale(0.92, 0.92);
+  drawRocketBack();
+  drawRocketFront();
+  ctx.restore();
+
+  // far side arm and leg
+  limb(-7, 20, -11, 36, 8, FUR_SHADE);
+  limb(-9, 2, -15, 14, 7, FUR_SHADE);
+
+  // body, standing upright
+  oval(0, 10, 15, 17, 0, FUR);
+  flatOval(2, 14, 10, 12, 0, FUR_LIGHT);
+
+  // near side leg, then the paw planted on the ground
+  limb(6, 20, 9, 36, 9, FUR);
+  flatOval(10, 38, 6, 4.5, 0, PAW);
+  flatOval(-12, 38, 6, 4.5, 0, PAW);
+
+  // the arm that holds the rocket
+  limb(9, 2, 23, 0, 8, FUR);
+  flatOval(25, 0, 5.5, 5, 0, PAW);
+
+  // head on top
+  ctx.save();
+  ctx.translate(-7, -12);
+  drawRaccoonHead();
+  ctx.restore();
+
+  ctx.restore();
+}
 
 // One pillar standing ahead of him, so the menu reads as "about to fly"
 // rather than as an empty backdrop.
