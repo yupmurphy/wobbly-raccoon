@@ -93,7 +93,7 @@ window.addEventListener('orientationchange', layout);
 
 // ---------------------------- STATE ---------------------------------
 const STATE = {
-  MENU: 'menu', SETTINGS: 'settings', READY: 'ready',
+  MENU: 'menu', SETTINGS: 'settings', SHOP: 'shop', READY: 'ready',
   PLAYING: 'playing', PAUSED: 'paused', DEAD: 'dead',
 };
 let state = STATE.MENU;
@@ -191,10 +191,134 @@ function applySettings() {
 // how high one boost lifts him, in world units
 function jumpHeight() { return (curBoost * curBoost) / (2 * curGravity); }
 
+// ------------------------------ SHOP ---------------------------------
+// Skins are palettes plus a couple of shape switches, so every animal is
+// drawn by the same code and they stay a matched set.
+const SKINS = {
+  raccoon: {
+    name: 'RACCOON', price: 0,
+    fur: '#a9aeb6', furMid: '#c2c6cd', furLight: '#d7dade',
+    dark: '#5a5f6b', paw: '#474b57', earInner: '#6d6472', shade: '#8d929b',
+    nose: '#2f2b3d', face: 'bandit', tail: 'ringed',
+  },
+  squirrel: {
+    name: 'SQUIRREL', price: 1,
+    fur: '#c08442', furMid: '#d29a55', furLight: '#f2e0c4',
+    dark: '#8a5427', paw: '#6d431f', earInner: '#d29a55', shade: '#a06c33',
+    nose: '#4a2f18', face: 'plain', tail: 'bushy',
+  },
+  redpanda: {
+    name: 'RED PANDA', price: 1,
+    fur: '#e2703a', furMid: '#f08a4b', furLight: '#fff2e4',
+    dark: '#5d3320', paw: '#3b2418', earInner: '#fff2e4', shade: '#c25c2c',
+    nose: '#2a1a12', face: 'panda', tail: 'ringed',
+  },
+  coati: {
+    name: 'COATI', price: 1,
+    fur: '#9a7354', furMid: '#b08a68', furLight: '#ead9c4',
+    dark: '#4a3729', paw: '#3d2d22', earInner: '#b08a68', shade: '#7e5c42',
+    nose: '#2a1d15', face: 'bandit', tail: 'ringed',
+  },
+};
+
+// Themes repaint the whole world: sky, skyline, ground, pillars and the
+// stuff drifting through the air.
+const THEMES = {
+  ruins: {
+    name: 'RUINS', price: 0,
+    sky: ['#2a2634', '#493b44', '#8a5544', '#c47a4d'],
+    sun: [248, 204, 158], sunAlpha: 0.5,
+    far: 'rgba(58,50,62,.45)', near: 'rgba(30,26,36,.72)',
+    haze: 'rgba(46,34,40,.6)', rim: 'rgba(200,126,80,.5)',
+    ground: ['#3d3243', '#251f2c', '#15121a'],
+    slab: '#4b3c4c', rubble: '#191520',
+    pillar: ['#3f3b46', '#7b7581', '#5e5865', '#332f3a'],
+    cap: ['#5c3a28', '#a9694a', '#4a2f21'], edge: '#231f29',
+    flake: 'rgba(226,220,213,.42)', drift: 'ash',
+  },
+  winter: {
+    name: 'WINTER', price: 1,
+    sky: ['#243046', '#43566f', '#8ea3b5', '#d6e2ea'],
+    sun: [236, 244, 250], sunAlpha: 0.45,
+    far: 'rgba(78,96,116,.45)', near: 'rgba(40,54,72,.72)',
+    haze: 'rgba(58,74,92,.55)', rim: 'rgba(226,238,246,.65)',
+    ground: ['#e8eef3', '#b9c8d5', '#8095a8'],
+    slab: '#ffffff', rubble: '#6d8296',
+    pillar: ['#4a5b6e', '#8fa4b6', '#6b7f93', '#39485a'],
+    cap: ['#7d93a6', '#cfe0ec', '#5f7285'], edge: '#26313f',
+    flake: 'rgba(255,255,255,.85)', drift: 'snow',
+  },
+  autumn: {
+    name: 'AUTUMN', price: 1,
+    sky: ['#3b2a2a', '#7a4630', '#c87a3c', '#efb96a'],
+    sun: [255, 224, 160], sunAlpha: 0.55,
+    far: 'rgba(92,58,44,.45)', near: 'rgba(54,33,26,.72)',
+    haze: 'rgba(72,44,32,.6)', rim: 'rgba(255,190,110,.55)',
+    ground: ['#6b4a2e', '#4a3220', '#2b1c12'],
+    slab: '#7d5a38', rubble: '#241710',
+    pillar: ['#4f3b28', '#9a7850', '#7a5c3c', '#3a2b1c'],
+    cap: ['#7a3f20', '#c8763a', '#5c2f18'], edge: '#2a1c12',
+    flake: 'rgba(230,140,60,.75)', drift: 'leaves',
+  },
+  night: {
+    name: 'NIGHT', price: 1,
+    sky: ['#070b1c', '#101a3a', '#1d2f5c', '#33497e'],
+    sun: [198, 214, 255], sunAlpha: 0.7,
+    far: 'rgba(28,40,74,.55)', near: 'rgba(10,16,34,.8)',
+    haze: 'rgba(14,22,44,.6)', rim: 'rgba(130,168,255,.45)',
+    ground: ['#16203c', '#0c1226', '#060913'],
+    slab: '#24315a', rubble: '#070b16',
+    pillar: ['#1d2748', '#4a5d94', '#33416e', '#141b33'],
+    cap: ['#3a2f66', '#7a63b8', '#2a2149'], edge: '#0a0e1d',
+    flake: 'rgba(214,228,255,.8)', drift: 'stars',
+  },
+  desert: {
+    name: 'DESERT', price: 1,
+    sky: ['#4a2f3f', '#a15a45', '#e08a55', '#f5c98a'],
+    sun: [255, 236, 190], sunAlpha: 0.6,
+    far: 'rgba(122,78,62,.42)', near: 'rgba(74,44,34,.7)',
+    haze: 'rgba(120,76,50,.55)', rim: 'rgba(255,214,150,.6)',
+    ground: ['#c89a5e', '#9a713f', '#5e4326'],
+    slab: '#e0b477', rubble: '#4a3419',
+    pillar: ['#7a5a38', '#c9a06a', '#a07c4e', '#5c4226'],
+    cap: ['#8a5a2a', '#d9a05a', '#6b421c'], edge: '#3a2814',
+    flake: 'rgba(238,214,170,.5)', drift: 'ash',
+  },
+};
+
+let owned = { skins: ['raccoon'], themes: ['ruins'] };
+let equipped = { skin: 'raccoon', theme: 'ruins' };
+
+function loadShop() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('wobbly-raccoon-shop') || '{}');
+    if (raw.owned) {
+      if (Array.isArray(raw.owned.skins))  owned.skins  = raw.owned.skins.filter(function (k) { return SKINS[k]; });
+      if (Array.isArray(raw.owned.themes)) owned.themes = raw.owned.themes.filter(function (k) { return THEMES[k]; });
+    }
+    if (owned.skins.indexOf('raccoon') < 0) owned.skins.push('raccoon');
+    if (owned.themes.indexOf('ruins') < 0)  owned.themes.push('ruins');
+    if (raw.equipped) {
+      if (SKINS[raw.equipped.skin]   && owned.skins.indexOf(raw.equipped.skin) >= 0)   equipped.skin = raw.equipped.skin;
+      if (THEMES[raw.equipped.theme] && owned.themes.indexOf(raw.equipped.theme) >= 0) equipped.theme = raw.equipped.theme;
+    }
+  } catch (e) { /* defaults stand */ }
+}
+
+function saveShop() {
+  try {
+    localStorage.setItem('wobbly-raccoon-shop',
+      JSON.stringify({ owned: owned, equipped: equipped }));
+  } catch (e) {}
+}
+
+function skin()  { return SKINS[equipped.skin]   || SKINS.raccoon; }
+function theme() { return THEMES[equipped.theme] || THEMES.ruins; }
+
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 5, name: '1.5' };
+const BUILD = { code: 6, name: '1.6' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';
@@ -405,6 +529,77 @@ function sliderKnobX(key, i) {
 // which slider a drag is currently holding, if any
 let dragging = -1;
 
+// ---------------------------- SHOP SCREEN ----------------------------
+let shopTab = 'skins';
+let shopNote = '';        // "not enough stars", shown under the grid
+
+function shopButton() {
+  const s = secondaryButton();
+  const w = 218, h = 56;
+  return { x: W / 2 - w / 2, y: s.y + s.h + 14, w: w, h: h };
+}
+
+function shopTabButtons() {
+  const w = 148, h = 46, gap = 12;
+  const y = H * 0.20;
+  return [
+    { x: W / 2 - w - gap / 2, y: y, w: w, h: h, tab: 'skins',  label: 'SKINS' },
+    { x: W / 2 + gap / 2,     y: y, w: w, h: h, tab: 'themes', label: 'WORLDS' },
+  ];
+}
+
+function shopItems() {
+  return shopTab === 'skins'
+    ? Object.keys(SKINS).map(function (k) { return { key: k, item: SKINS[k], kind: 'skins' }; })
+    : Object.keys(THEMES).map(function (k) { return { key: k, item: THEMES[k], kind: 'themes' }; });
+}
+
+// two columns, as many rows as it takes
+function shopCell(i) {
+  const cols = 2;
+  const gap = 14;
+  const gridW = Math.min(360, W - 60);
+  const cw = (gridW - gap) / cols;
+  const ch = 108;
+  const x0 = W / 2 - gridW / 2;
+  const y0 = H * 0.20 + 62;
+  return {
+    x: x0 + (i % cols) * (cw + gap),
+    y: y0 + Math.floor(i / cols) * (ch + gap),
+    w: cw, h: ch,
+  };
+}
+
+function shopBackButton() {
+  const rows = Math.ceil(shopItems().length / 2);
+  const last = shopCell((rows - 1) * 2);
+  const w = 190, h = 56;
+  return { x: W / 2 - w / 2, y: last.y + last.h + 34, w: w, h: h };
+}
+
+function isOwned(kind, key) { return owned[kind].indexOf(key) >= 0; }
+function isEquipped(kind, key) {
+  return kind === 'skins' ? equipped.skin === key : equipped.theme === key;
+}
+
+// buying and equipping are the same tap: you get what you can afford
+function shopTap(entry) {
+  if (!isOwned(entry.kind, entry.key)) {
+    if (stars < entry.item.price) {
+      shopNote = 'Not enough stars';
+      return;
+    }
+    stars -= entry.item.price;
+    saveStars();
+    owned[entry.kind].push(entry.key);
+  }
+  if (entry.kind === 'skins') equipped.skin = entry.key;
+  else equipped.theme = entry.key;
+  shopNote = '';
+  saveShop();
+  sound('point');
+}
+
 function pauseMenuButtons() {
   const cy = H * 0.45, w = 210, h = 62;
   return {
@@ -469,8 +664,21 @@ cv.addEventListener('pointerdown', function (e) {
   if (state === STATE.MENU) {
     if (inside(muteButton(), p))      { toggleMute(); return; }
     if (inside(gearButton(), p))      { state = STATE.SETTINGS; return; }
+    if (inside(shopButton(), p))      { shopNote = ''; state = STATE.SHOP; return; }
     if (inside(secondaryButton(), p)) { secondaryAction(); return; }
     if (inside(startButton(), p))     { startRun(); return; }
+    return;
+  }
+
+  if (state === STATE.SHOP) {
+    for (const t of shopTabButtons()) {
+      if (inside(t, p)) { shopTab = t.tab; shopNote = ''; return; }
+    }
+    const items = shopItems();
+    for (let i = 0; i < items.length; i++) {
+      if (inside(shopCell(i), p)) { shopTap(items[i]); return; }
+    }
+    if (inside(shopBackButton(), p)) { state = STATE.MENU; return; }
     return;
   }
 
@@ -544,6 +752,7 @@ window.addEventListener('keydown', function (e) {
   if (e.code === 'Escape') {
     if (state === STATE.DEAD)     { goToMenu(); return; }
     if (state === STATE.SETTINGS) { saveSettings(); state = STATE.MENU; return; }
+    if (state === STATE.SHOP)     { state = STATE.MENU; return; }
     if (state === STATE.PLAYING)  { state = STATE.PAUSED; return; }
     if (state === STATE.PAUSED)   { state = STATE.PLAYING; return; }
   }
@@ -685,16 +894,25 @@ function update(dt) {
   // a pause freezes the whole world, background included
   if (state === STATE.PAUSED) return;
 
-  // the background keeps moving even in the menu, so the scene feels alive
-  farOffset  = (farOffset  + curSpeed * 0.10 * dt) % SKYLINE_SPAN;
-  nearOffset = (nearOffset + curSpeed * 0.26 * dt) % SKYLINE_SPAN;
-  // One growing counter for the ground; each layer takes its own remainder
-  // from it. It wraps on a common multiple of every layer's spacing, so no
-  // layer ever jumps sideways when the counter resets.
-  groundOffset = (groundOffset + curSpeed * dt) % GROUND_CYCLE;
+  // The menu and the screens reached from it are a still picture: the
+  // ground and the skyline must not slide, or the ruins standing on the
+  // ground look like they are being dragged along with it.
+  const still = state === STATE.MENU || state === STATE.SETTINGS || state === STATE.SHOP;
 
+  // the background keeps moving even in the menu, so the scene feels alive
+  if (!still) {
+    farOffset  = (farOffset  + curSpeed * 0.10 * dt) % SKYLINE_SPAN;
+    nearOffset = (nearOffset + curSpeed * 0.26 * dt) % SKYLINE_SPAN;
+    // One growing counter for the ground; each layer takes its own remainder
+    // from it. It wraps on a common multiple of every layer's spacing, so no
+    // layer ever jumps sideways when the counter resets.
+    groundOffset = (groundOffset + curSpeed * dt) % GROUND_CYCLE;
+  }
+
+  // The flakes keep drifting even on the still screens - falling snow or
+  // ash reads as weather, not as the world being dragged sideways.
   for (const a of ash) {
-    a.x -= (curSpeed * 0.12 + a.fall * 0.35) * dt;
+    a.x -= ((still ? 0 : curSpeed * 0.12) + a.fall * 0.35) * dt;
     a.y += a.fall * dt;
     if (a.y > viewBottom) {
       a.y = viewTop - 4;
@@ -703,11 +921,15 @@ function update(dt) {
     if (a.x < viewLeft - 4) { a.x = viewRight + 4; }
   }
 
-  if (state === STATE.MENU || state === STATE.READY) {
-    // he idles in place; on the menu he sits centred, above the button
-    const restY = state === STATE.MENU ? H * 0.40 : H * 0.45;
-    if (state === STATE.MENU) raccoon.x = W / 2 - 6;
-    raccoon.y = restY + Math.sin(performance.now() / 300) * 10;
+  if (state === STATE.MENU || state === STATE.SETTINGS || state === STATE.SHOP) {
+    // parked on the ground, rocket idle, facing the pillar ahead of him
+    raccoon.x = W * 0.40;
+    raccoon.y = HORIZON - 32;
+    raccoon.angle = 0;
+    raccoon.vy = 0;
+    raccoon.sinceBoost = 99;
+  } else if (state === STATE.READY) {
+    raccoon.y = H * 0.45 + Math.sin(performance.now() / 300) * 10;
     raccoon.angle = -0.12 + Math.sin(performance.now() / 300) * 0.05;
     raccoon.sinceBoost = 99;
   }
@@ -835,37 +1057,49 @@ function draw() {
   }
 
   drawSky();
-  drawSkyline(skylineFar,  farOffset,  'rgba(58,50,62,.45)');
-  drawSkyline(skylineNear, nearOffset, 'rgba(30,26,36,.72)');
+  drawSkyline(skylineFar,  farOffset,  theme().far);
+  drawSkyline(skylineNear, nearOffset, theme().near);
   obstacles.forEach(drawObstacle);
   drawAsh();
   drawParticles();
-  drawRider();
-  drawStarPops();
+
+  // On the still screens he stands *on* the ground, so he is drawn after
+  // it; in flight he is in front of everything.
+  const parked = state === STATE.MENU || state === STATE.SETTINGS || state === STATE.SHOP;
+  if (!parked) {
+    drawRider();
+    drawStarPops();
+  }
   drawGround();
-  if (state === STATE.MENU) drawMenuRuins();
+  if (parked) {
+    drawMenuRuins();
+    drawMenuPillar();
+    drawRider();
+  }
 
   ctx.restore();
   drawUI();
 }
 
 function drawSky() {
+  const th = theme();
   const g = ctx.createLinearGradient(0, 0, 0, HORIZON);
-  g.addColorStop(0,    '#2a2634');   // soot, lifted off pure black
-  g.addColorStop(0.42, '#493b44');
-  g.addColorStop(0.76, '#8a5544');
-  g.addColorStop(1,    '#c47a4d');   // dull ember at the horizon
+  g.addColorStop(0,    th.sky[0]);
+  g.addColorStop(0.42, th.sky[1]);
+  g.addColorStop(0.76, th.sky[2]);
+  g.addColorStop(1,    th.sky[3]);
   ctx.fillStyle = g;
   ctx.fillRect(viewLeft, viewTop, viewRight - viewLeft, viewBottom - viewTop);
 
-  // the sun, barely making it through the smog
+  // the sun, or the moon, depending on the theme
+  const s = th.sun;
   const sx = W * 0.68, sy = HORIZON - 165;
   const halo = ctx.createRadialGradient(sx, sy, 6, sx, sy, 135);
-  halo.addColorStop(0, 'rgba(243,173,112,.34)');
-  halo.addColorStop(1, 'rgba(243,173,112,0)');
+  halo.addColorStop(0, 'rgba(' + s[0] + ',' + s[1] + ',' + s[2] + ',.32)');
+  halo.addColorStop(1, 'rgba(' + s[0] + ',' + s[1] + ',' + s[2] + ',0)');
   ctx.fillStyle = halo;
   ctx.beginPath(); ctx.arc(sx, sy, 135, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(248,204,158,.5)';
+  ctx.fillStyle = 'rgba(' + s[0] + ',' + s[1] + ',' + s[2] + ',' + th.sunAlpha + ')';
   ctx.beginPath(); ctx.arc(sx, sy, 30, 0, Math.PI * 2); ctx.fill();
 }
 
@@ -894,11 +1128,31 @@ function drawSkyline(list, offset, color) {
 }
 
 function drawAsh() {
-  ctx.fillStyle = 'rgba(226,220,213,.42)';
+  const th = theme();
+  ctx.fillStyle = th.flake;
+
   for (const a of ash) {
-    ctx.beginPath();
-    ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2);
-    ctx.fill();
+    if (th.drift === 'leaves') {
+      // little tumbling leaves instead of specks
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.y * 0.02 + a.r);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, a.r * 2.1, a.r * 0.95, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (th.drift === 'stars') {
+      // the "fall" of a star is its twinkle, not movement
+      ctx.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(a.y * 0.05 + a.fall));
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.r * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, th.drift === 'snow' ? a.r * 1.35 : a.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -911,15 +1165,17 @@ function drawObstacle(o) {
 
   // same shape and size as before - only the colours moved to concrete
   // and rust, so the pillars belong to the ruined world
+  const th = theme();
+
   function pillar(x, y, h) {
     const g = ctx.createLinearGradient(x, 0, x + w, 0);
-    g.addColorStop(0,    '#3f3b46');
-    g.addColorStop(0.35, '#7b7581');
-    g.addColorStop(0.7,  '#5e5865');
-    g.addColorStop(1,    '#332f3a');
+    g.addColorStop(0,    th.pillar[0]);
+    g.addColorStop(0.35, th.pillar[1]);
+    g.addColorStop(0.7,  th.pillar[2]);
+    g.addColorStop(1,    th.pillar[3]);
     ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#231f29';
+    ctx.strokeStyle = th.edge;
     ctx.lineWidth = 3;
     ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
   }
@@ -927,12 +1183,12 @@ function drawObstacle(o) {
   function cap(x, y) {
     const cw = w + 14, cx = x - 7;
     const g = ctx.createLinearGradient(cx, 0, cx + cw, 0);
-    g.addColorStop(0,    '#5c3a28');
-    g.addColorStop(0.35, '#a9694a');
-    g.addColorStop(1,    '#4a2f21');
+    g.addColorStop(0,    th.cap[0]);
+    g.addColorStop(0.35, th.cap[1]);
+    g.addColorStop(1,    th.cap[2]);
     ctx.fillStyle = g;
     ctx.fillRect(cx, y, cw, 26);
-    ctx.strokeStyle = '#231f29';
+    ctx.strokeStyle = th.edge;
     ctx.lineWidth = 3;
     ctx.strokeRect(cx + 1.5, y + 1.5, cw - 3, 23);
   }
@@ -969,11 +1225,18 @@ function drawParticles() {
 const OUTLINE   = '#2f2b3d';
 const OUTLINE_W = 3;
 
-const FUR       = '#a9aeb6';   // main body grey
-const FUR_LIGHT = '#d7dade';   // muzzle, belly, inner face
-const FUR_MID   = '#c2c6cd';
-const MASK      = '#5a5f6b';   // the dark band across the eyes
-const PAW       = '#474b57';
+// The character palette is whatever skin is equipped. useSkin() refreshes
+// these before anything draws the animal, so one set of drawing code
+// produces every species in the shop.
+let FUR, FUR_LIGHT, FUR_MID, FUR_SHADE, MASK, PAW, EAR_IN, NOSE, FACE, TAIL;
+
+function useSkin(s) {
+  s = s || skin();
+  FUR = s.fur; FUR_LIGHT = s.furLight; FUR_MID = s.furMid; FUR_SHADE = s.shade;
+  MASK = s.dark; PAW = s.paw; EAR_IN = s.earInner; NOSE = s.nose;
+  FACE = s.face; TAIL = s.tail;
+}
+
 const BLUSH     = '#f18ca8';
 
 const ROCKET_RED  = '#e5533d';
@@ -1016,6 +1279,7 @@ function limb(x1, y1, x2, y2, w, fill) {
 
 // ---------------------- the raccoon on his rocket -------------------
 function drawRider() {
+  useSkin();
   const thrust = state === STATE.DEAD ? 0
     : Math.max(0, 1 - raccoon.sinceBoost / curThrust);
 
@@ -1030,8 +1294,8 @@ function drawRider() {
   drawTail(drift);
   drawRocketBack();
   // far side arm and leg, tucked behind the body
-  limb(-5, 0, 1, 9, 6, '#8d929b');
-  limb(1, -9, 10, -2, 5, '#8d929b');
+  limb(-5, 0, 1, 9, 6, FUR_SHADE);
+  limb(1, -9, 10, -2, 5, FUR_SHADE);
   drawRocketFront();
   drawRaccoonBody(drift);
   drawRaccoonHead();
@@ -1084,18 +1348,32 @@ function drawFlame(thrust) {
 }
 
 function drawTail(drift) {
-  // drawn tip first, so each ring overlaps the previous one cleanly
+  // drawn tip first, so each segment overlaps the previous one cleanly
   const swing = drift * 0.18;
-  const rings = [
-    { x: -25, y: -23, r: 5.5, c: FUR_LIGHT },
-    { x: -30, y: -17, r: 6.5, c: '#585d69' },
-    { x: -32, y: -10, r: 7.2, c: FUR_LIGHT },
-    { x: -29, y:  -4, r: 7.8, c: '#585d69' },
-    { x: -22, y:   0, r: 8.2, c: FUR       },
-  ];
   ctx.save();
   ctx.rotate(swing);
-  for (const r of rings) oval(r.x, r.y, r.r, r.r, 0, r.c);
+
+  if (TAIL === 'bushy') {
+    // squirrel: one big plume curling up over its back
+    const puffs = [
+      { x: -22, y: -34, r: 9.5,  c: FUR_LIGHT },
+      { x: -29, y: -26, r: 11,   c: FUR       },
+      { x: -33, y: -16, r: 11.5, c: FUR       },
+      { x: -32, y:  -6, r: 10.5, c: FUR       },
+      { x: -24, y:   1, r: 9,    c: FUR_MID   },
+    ];
+    for (const p of puffs) oval(p.x, p.y, p.r, p.r * 1.05, 0, p.c);
+  } else {
+    const rings = [
+      { x: -25, y: -23, r: 5.5, c: FUR_LIGHT },
+      { x: -30, y: -17, r: 6.5, c: MASK },
+      { x: -32, y: -10, r: 7.2, c: FUR_LIGHT },
+      { x: -29, y:  -4, r: 7.8, c: MASK },
+      { x: -22, y:   0, r: 8.2, c: FUR },
+    ];
+    for (const r of rings) oval(r.x, r.y, r.r, r.r, 0, r.c);
+  }
+
   ctx.restore();
 }
 
@@ -1165,30 +1443,50 @@ function drawRaccoonHead() {
   ctx.quadraticCurveTo(hx - 14, hy - 17, hx - 1, hy - 12);
   ctx.closePath();
   outlined(FUR);
-  flatOval(hx - 8, hy - 8.5, 2.8, 3.6, -0.5, '#6d6472');
+  flatOval(hx - 8, hy - 8.5, 2.8, 3.6, -0.5, EAR_IN);
 
   ctx.beginPath();
   ctx.moveTo(hx + 4, hy - 12);
   ctx.quadraticCurveTo(hx + 15, hy - 18, hx + 12, hy - 4);
   ctx.closePath();
   outlined(FUR);
-  flatOval(hx + 9.5, hy - 9.5, 2.8, 3.6, 0.5, '#6d6472');
+  flatOval(hx + 9.5, hy - 9.5, 2.8, 3.6, 0.5, EAR_IN);
 
   // head
   oval(hx, hy, 12, 11.5, 0, FUR_MID);
   // lighter forehead / cheeks
   flatOval(hx + 1, hy + 3, 10, 8, 0, FUR_LIGHT);
 
-  // the mask: one shape so the outlines never cross
-  ctx.beginPath();
-  ctx.ellipse(hx - 4.5, hy - 2.5, 6, 5.4, -0.12, 0, Math.PI * 2);
-  ctx.fillStyle = MASK; ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(hx + 5.5, hy - 3.5, 6, 5.4, 0.12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(hx + 0.5, hy - 5, 6, 3.2, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // Facial markings, the main thing that tells the species apart.
+  if (FACE === 'bandit') {
+    // raccoon and coati: one dark band across both eyes
+    ctx.beginPath();
+    ctx.ellipse(hx - 4.5, hy - 2.5, 6, 5.4, -0.12, 0, Math.PI * 2);
+    ctx.fillStyle = MASK; ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hx + 5.5, hy - 3.5, 6, 5.4, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hx + 0.5, hy - 5, 6, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (FACE === 'panda') {
+    // red panda: pale cheek patches with a dark tear line under each eye
+    ctx.fillStyle = FUR_LIGHT;
+    ctx.beginPath();
+    ctx.ellipse(hx - 5, hy - 1, 6.4, 6.2, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hx + 6, hy - 2, 6.4, 6.2, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = MASK;
+    ctx.beginPath();
+    ctx.ellipse(hx - 4.5, hy + 3.2, 1.8, 3.4, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hx + 6.5, hy + 2.2, 1.8, 3.4, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 'plain' (squirrel) gets no markings at all
 
   // eyes
   if (state === STATE.DEAD) {
@@ -1217,10 +1515,10 @@ function drawRaccoonHead() {
   ctx.lineTo(hx + 3.6, hy + 4.4);
   ctx.quadraticCurveTo(hx + 1, hy + 8, hx - 1.6, hy + 4.4);
   ctx.closePath();
-  ctx.fillStyle = '#2f2b3d'; ctx.fill();
+  ctx.fillStyle = NOSE; ctx.fill();
 
   // little smile
-  ctx.strokeStyle = '#2f2b3d';
+  ctx.strokeStyle = NOSE;
   ctx.lineWidth = 1.6;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -1286,6 +1584,36 @@ const MENU_RUINS = [
   { side:  1, off: 140, w:  48, h: 0.27, cut: 0.58 },
 ];
 
+// One pillar standing ahead of him, so the menu reads as "about to fly"
+// rather than as an empty backdrop.
+function drawMenuPillar() {
+  const th = theme();
+  const w = CFG.obstacleWidth;
+  const x = W * 0.66;
+  const top = HORIZON - 210;
+
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0,    th.pillar[0]);
+  g.addColorStop(0.35, th.pillar[1]);
+  g.addColorStop(0.7,  th.pillar[2]);
+  g.addColorStop(1,    th.pillar[3]);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, top, w, HORIZON - top + 8);
+  ctx.strokeStyle = th.edge;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 1.5, top + 1.5, w - 3, HORIZON - top + 5);
+
+  const cw = w + 14, cx = x - 7;
+  const cg = ctx.createLinearGradient(cx, 0, cx + cw, 0);
+  cg.addColorStop(0,    th.cap[0]);
+  cg.addColorStop(0.35, th.cap[1]);
+  cg.addColorStop(1,    th.cap[2]);
+  ctx.fillStyle = cg;
+  ctx.fillRect(cx, top, cw, 26);
+  ctx.strokeStyle = th.edge;
+  ctx.strokeRect(cx + 1.5, top + 1.5, cw - 3, 23);
+}
+
 function drawMenuRuins() {
   const groundY = HORIZON + 6;
 
@@ -1302,7 +1630,7 @@ function drawMenuRuins() {
     ctx.lineTo(x + b.w, top + 8);
     ctx.lineTo(x + b.w, groundY);
     ctx.closePath();
-    ctx.fillStyle = '#1a1622';
+    ctx.fillStyle = theme().rubble;
     ctx.fill();
 
     // a few windows, most of them dead, one or two still burning
@@ -1314,7 +1642,7 @@ function drawMenuRuins() {
         const wy = top + 34 + r * 34;
         if (wy > groundY - 18 || wx + 12 > x + b.w - 6) continue;
         const lit = ((c * 7 + r * 13 + b.off) % 11) === 0;
-        ctx.fillStyle = lit ? 'rgba(226,142,84,.55)' : 'rgba(58,48,66,.7)';
+        ctx.fillStyle = lit ? theme().rim : 'rgba(58,48,66,.55)';
         ctx.fillRect(wx, wy, 12, 17);
       }
     }
@@ -1324,31 +1652,32 @@ function drawMenuRuins() {
 function drawGround() {
   const y = HORIZON;
   const wide = viewRight - viewLeft;
+  const th = theme();
 
   // Haze rising off the ground. Pillars sink into it instead of ending
   // on a hard line, which is what made them look cut off.
   const haze = ctx.createLinearGradient(0, y - 60, 0, y);
-  haze.addColorStop(0, 'rgba(52,38,42,0)');
-  haze.addColorStop(1, 'rgba(46,34,40,.6)');
+  haze.addColorStop(0, th.haze.replace(/,[^,]*\)$/, ',0)'));
+  haze.addColorStop(1, th.haze);
   ctx.fillStyle = haze;
   ctx.fillRect(viewLeft, y - 60, wide, 60);
 
-  // the earth itself, dark but not dead flat
+  // the earth itself
   const g = ctx.createLinearGradient(0, y, 0, H);
-  g.addColorStop(0,    '#3d3243');
-  g.addColorStop(0.3,  '#251f2c');
-  g.addColorStop(1,    '#15121a');
+  g.addColorStop(0,   th.ground[0]);
+  g.addColorStop(0.3, th.ground[1]);
+  g.addColorStop(1,   th.ground[2]);
   ctx.fillStyle = g;
   ctx.fillRect(viewLeft, y, wide, viewBottom - y);
 
-  // the last of the ember light catching the edge
-  ctx.fillStyle = 'rgba(200,126,80,.5)';
+  // light catching the edge
+  ctx.fillStyle = th.rim;
   ctx.fillRect(viewLeft, y - 2, wide, 3);
 
   // Broken slabs along the rim. Each layer takes its own remainder of the
   // shared counter, so both drift at exactly the raccoon's travel speed.
   const slabStart = viewLeft - (groundOffset % SLAB_SPACING);
-  ctx.fillStyle = '#4b3c4c';
+  ctx.fillStyle = th.slab;
   for (let x = slabStart; x < viewRight + SLAB_SPACING; x += SLAB_SPACING) {
     ctx.beginPath();
     ctx.moveTo(x, y + 1);
@@ -1361,7 +1690,7 @@ function drawGround() {
 
   // rubble silhouettes in the foreground
   const rubbleStart = viewLeft - (groundOffset % RUBBLE_SPACING);
-  ctx.fillStyle = '#191520';
+  ctx.fillStyle = th.rubble;
   for (let x = rubbleStart; x < viewRight + RUBBLE_SPACING; x += RUBBLE_SPACING) {
     ctx.beginPath();
     ctx.moveTo(x + 4,  viewBottom);
@@ -1522,9 +1851,10 @@ function drawUI() {
 
     const sec = secondaryButton();
     drawButton(sec, secondaryLabel(), 'plain');
+    drawButton(shopButton(), 'SHOP', 'plain');
 
     if (updateCheck.message) {
-      outlinedText(updateCheck.message, W / 2, sec.y + sec.h + 26,
+      outlinedText(updateCheck.message, W / 2, shopButton().y + shopButton().h + 24,
                    '17px system-ui', '#d9d2c8', '#1d2b33', 4);
     }
 
@@ -1533,6 +1863,7 @@ function drawUI() {
   }
 
   if (state === STATE.SETTINGS) drawSettingsScreen();
+  if (state === STATE.SHOP)     drawShopScreen();
   if (state === STATE.PAUSED)   drawPauseScreen();
 
   if (state === STATE.READY) {
@@ -1639,6 +1970,120 @@ function drawSettingsScreen() {
   drawButton(settingsResetButton(), 'DEFAULTS', 'plain');
 }
 
+// a tiny head of the given animal, for the shop tile
+function drawSkinPreview(cx, cy, s, size) {
+  const saved = [FUR, FUR_LIGHT, FUR_MID, FUR_SHADE, MASK, PAW, EAR_IN, NOSE, FACE, TAIL];
+  useSkin(s);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(size, size);
+  ctx.translate(-7, 16);     // the head sits at (7,-16) in rider space
+  drawRaccoonHead();
+  ctx.restore();
+
+  FUR = saved[0]; FUR_LIGHT = saved[1]; FUR_MID = saved[2]; FUR_SHADE = saved[3];
+  MASK = saved[4]; PAW = saved[5]; EAR_IN = saved[6]; NOSE = saved[7];
+  FACE = saved[8]; TAIL = saved[9];
+}
+
+// a slice of that world: sky, a couple of roofs, its ground
+function drawThemePreview(r, th) {
+  ctx.save();
+  ctx.beginPath();
+  roundRectPath(r.x, r.y, r.w, r.h, 10);
+  ctx.clip();
+
+  const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+  g.addColorStop(0,    th.sky[0]);
+  g.addColorStop(0.45, th.sky[1]);
+  g.addColorStop(0.8,  th.sky[2]);
+  g.addColorStop(1,    th.sky[3]);
+  ctx.fillStyle = g;
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+
+  const base = r.y + r.h * 0.74;
+  ctx.fillStyle = th.near;
+  const roofs = [0.08, 0.3, 0.52, 0.74];
+  for (let i = 0; i < roofs.length; i++) {
+    const bw = r.w * 0.16;
+    const bh = r.h * (0.18 + (i % 3) * 0.12);
+    ctx.fillRect(r.x + r.w * roofs[i], base - bh, bw, bh);
+  }
+
+  ctx.fillStyle = th.ground[0];
+  ctx.fillRect(r.x, base, r.w, r.h);
+  ctx.fillStyle = th.rim;
+  ctx.fillRect(r.x, base - 2, r.w, 2.5);
+
+  ctx.fillStyle = th.flake;
+  for (let i = 0; i < 9; i++) {
+    ctx.beginPath();
+    ctx.arc(r.x + ((i * 37) % r.w), r.y + ((i * 23) % (r.h * 0.7)), 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawShopScreen() {
+  dimScene(0.76);
+
+  ctx.textAlign = 'center';
+  outlinedText('SHOP', W / 2, H * 0.12, 'bold 42px system-ui', '#fff', '#1d2b33', 8);
+  starCount(W / 2 - 34, H * 0.12 + 32, stars, 14);
+
+  for (const t of shopTabButtons()) {
+    drawButton(t, t.label, shopTab === t.tab ? 'primary' : 'plain');
+  }
+
+  const items = shopItems();
+  for (let i = 0; i < items.length; i++) {
+    const e = items[i];
+    const r = shopCell(i);
+    const own = isOwned(e.kind, e.key);
+    const on  = isEquipped(e.kind, e.key);
+
+    // tile
+    ctx.fillStyle = on ? 'rgba(224,123,57,.24)' : 'rgba(240,232,220,.09)';
+    ctx.beginPath(); roundRectPath(r.x, r.y, r.w, r.h, 12); ctx.fill();
+    ctx.strokeStyle = on ? '#e07b39' : 'rgba(240,232,220,.28)';
+    ctx.lineWidth = on ? 3.5 : 2;
+    ctx.beginPath(); roundRectPath(r.x, r.y, r.w, r.h, 12); ctx.stroke();
+
+    if (e.kind === 'skins') {
+      drawSkinPreview(r.x + r.w * 0.30, r.y + r.h * 0.42, e.item, 1.35);
+    } else {
+      drawThemePreview({ x: r.x + 10, y: r.y + 10, w: r.w * 0.42, h: r.h - 46 }, e.item);
+    }
+
+    ctx.textAlign = 'left';
+    // the longest name here is RED PANDA, which only fits at this size
+    outlinedText(e.item.name, r.x + r.w * 0.50, r.y + r.h * 0.42,
+                 'bold 13.5px system-ui', '#f2ece2', '#1d2b33', 4);
+
+    // state line: equipped, owned, or the price
+    if (on) {
+      outlinedText('EQUIPPED', r.x + r.w * 0.52, r.y + r.h * 0.68,
+                   'bold 13px system-ui', '#ffc48a', '#1d2b33', 4);
+    } else if (own) {
+      outlinedText('TAP TO WEAR', r.x + r.w * 0.52, r.y + r.h * 0.68,
+                   'bold 13px system-ui', '#cfe6bd', '#1d2b33', 4);
+    } else {
+      drawStar(r.x + r.w * 0.56, r.y + r.h * 0.64, 8, STAR_GOLD, 2);
+      outlinedText(String(e.item.price), r.x + r.w * 0.56 + 13, r.y + r.h * 0.69,
+                   'bold 16px system-ui', '#fff', '#1d2b33', 4);
+    }
+    ctx.textAlign = 'center';
+  }
+
+  const back = shopBackButton();
+  if (shopNote) {
+    outlinedText(shopNote, W / 2, back.y - 14, 'bold 16px system-ui', '#ff9a6b', '#1d2b33', 4);
+  }
+  drawButton(back, 'BACK', 'primary');
+}
+
 function drawPauseScreen() {
   dimScene(0.6);
 
@@ -1695,6 +2140,7 @@ function loop(now) {
 }
 
 loadSettings();
+loadShop();
 layout();
 reset();
 requestAnimationFrame(loop);
