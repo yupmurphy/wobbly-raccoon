@@ -318,7 +318,7 @@ function theme() { return THEMES[equipped.theme] || THEMES.ruins; }
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 7, name: '1.7' };
+const BUILD = { code: 8, name: '1.8' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';
@@ -922,12 +922,29 @@ function update(dt) {
   }
 
   if (state === STATE.MENU || state === STATE.SETTINGS || state === STATE.SHOP) {
-    // parked on the ground, rocket idle, facing the pillar ahead of him
-    raccoon.x = W * 0.46;
-    raccoon.y = HORIZON - 44;
-    raccoon.angle = 0;
+    // In flight above the still ground, rocket burning, pillar ahead: the
+    // pose the game is actually about. The world underneath stays frozen,
+    // so the ruins no longer look dragged along with it.
+    const t = performance.now() / 1000;
+    const bob = Math.sin(t * 2.1) * 9;
+
+    // He flies in whatever room the buttons leave. On a tall phone that is
+    // the band between the last button and the ground; on a short landscape
+    // window the buttons reach the ground, so he flies beside them instead.
+    const lastBtn = shopButton();
+    const room = HORIZON - (lastBtn.y + lastBtn.h);
+    if (room >= 140) {
+      raccoon.x = W * 0.42;
+      raccoon.y = lastBtn.y + lastBtn.h + room * 0.52 + bob;
+    } else {
+      raccoon.x = Math.max(60, lastBtn.x * 0.52);
+      raccoon.y = HORIZON - 130 + bob;
+    }
+    raccoon.angle = -0.22 + Math.sin(t * 2.1) * 0.05;
     raccoon.vy = 0;
-    raccoon.sinceBoost = 99;
+    // a flame that breathes instead of one frozen puff
+    raccoon.sinceBoost = curThrust * (0.18 + 0.30 * (0.5 + 0.5 * Math.sin(t * 6.5)));
+    if (Math.random() < 0.55) spawnExhaust();
   } else if (state === STATE.READY) {
     raccoon.y = H * 0.45 + Math.sin(performance.now() / 300) * 10;
     raccoon.angle = -0.12 + Math.sin(performance.now() / 300) * 0.05;
@@ -1074,7 +1091,7 @@ function draw() {
   if (parked) {
     drawMenuRuins();
     drawMenuPillar();
-    drawStandingRider();
+    drawRider();      // he flies in front of the still scenery
   }
 
   ctx.restore();
@@ -1240,7 +1257,6 @@ function useSkin(s) {
   BIG_NOSE = !!s.bigNose;
 }
 
-const BLUSH     = '#f18ca8';
 
 const ROCKET_RED  = '#e5533d';
 const ROCKET_DARK = '#c33f2d';
@@ -1517,10 +1533,6 @@ function drawRaccoonHead() {
     flatOval(hx + 5.6, hy - 4.2, 0.8, 0.8, 0, '#ffffff');
   }
 
-  // blush
-  flatOval(hx - 8.5, hy + 4, 3.4, 2.4, 0, BLUSH);
-  flatOval(hx + 8.5, hy + 3, 3.4, 2.4, 0, BLUSH);
-
   // snout and nose
   flatOval(hx + 1, hy + 6, 6, 4.2, 0, FUR_LIGHT);
   if (BIG_NOSE) {
@@ -1538,14 +1550,6 @@ function drawRaccoonHead() {
     ctx.fillStyle = NOSE; ctx.fill();
   }
 
-  // little smile
-  ctx.strokeStyle = NOSE;
-  ctx.lineWidth = 1.6;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(hx - 3.5, hy + 8);
-  ctx.quadraticCurveTo(hx + 1, hy + 10.5, hx + 5.5, hy + 7.5);
-  ctx.stroke();
 }
 
 function cross(x, y, r) {
@@ -1604,65 +1608,6 @@ const MENU_RUINS = [
   { side:  1, off:  92, w:  60, h: 0.36, cut: 0.24 },
   { side:  1, off: 140, w:  48, h: 0.27, cut: 0.58 },
 ];
-
-// The menu pose: standing on the ground, facing the pillar ahead, rocket
-// held upright in his right hand. Deliberately nothing like the in-game
-// pose, where he is sitting astride the rocket in flight.
-function drawStandingRider() {
-  useSkin();
-
-  ctx.save();
-  ctx.translate(raccoon.x, raccoon.y);
-  ctx.scale(1.15, 1.15);          // a touch larger, he is the centrepiece
-
-  // tail hanging down behind him
-  if (TAIL === 'bushy') {
-    oval(-20, 30, 10, 11, 0, FUR);
-    oval(-22, 18, 11, 11.5, 0, FUR);
-    oval(-20, 6, 10, 10, 0, FUR_MID);
-  } else if (TAIL !== 'none') {
-    oval(-18, 34, 6, 6, 0, FUR_LIGHT);
-    oval(-19, 25, 6.6, 6.6, 0, MASK);
-    oval(-18, 16, 7.2, 7.2, 0, FUR_LIGHT);
-    oval(-15, 8, 7.6, 7.6, 0, FUR);
-  }
-
-  // the rocket, stood on its fins at his right side: the same art as in
-  // flight, simply turned to point at the sky
-  ctx.save();
-  ctx.translate(34, 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.translate(0, -16);
-  ctx.scale(0.92, 0.92);
-  drawRocketBack();
-  drawRocketFront();
-  ctx.restore();
-
-  // far side arm and leg
-  limb(-7, 20, -11, 36, 8, FUR_SHADE);
-  limb(-9, 2, -15, 14, 7, FUR_SHADE);
-
-  // body, standing upright
-  oval(0, 10, 15, 17, 0, FUR);
-  flatOval(2, 14, 10, 12, 0, FUR_LIGHT);
-
-  // near side leg, then the paw planted on the ground
-  limb(6, 20, 9, 36, 9, FUR);
-  flatOval(10, 38, 6, 4.5, 0, PAW);
-  flatOval(-12, 38, 6, 4.5, 0, PAW);
-
-  // the arm that holds the rocket
-  limb(9, 2, 23, 0, 8, FUR);
-  flatOval(25, 0, 5.5, 5, 0, PAW);
-
-  // head on top
-  ctx.save();
-  ctx.translate(-7, -12);
-  drawRaccoonHead();
-  ctx.restore();
-
-  ctx.restore();
-}
 
 // One pillar standing ahead of him, so the menu reads as "about to fly"
 // rather than as an empty backdrop.
