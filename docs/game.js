@@ -92,7 +92,10 @@ window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', layout);
 
 // ---------------------------- STATE ---------------------------------
-const STATE = { MENU: 'menu', READY: 'ready', PLAYING: 'playing', DEAD: 'dead' };
+const STATE = {
+  MENU: 'menu', SETTINGS: 'settings', READY: 'ready',
+  PLAYING: 'playing', PAUSED: 'paused', DEAD: 'dead',
+};
 let state = STATE.MENU;
 
 let raccoon, obstacles, particles, starPops, score, best, runStars, deadTime, shake;
@@ -118,10 +121,80 @@ function toggleMute() {
   try { localStorage.setItem('wobbly-raccoon-muted', muted ? '1' : '0'); } catch (e) {}
 }
 
+// ---------------------------- SETTINGS -------------------------------
+// Player-set difficulty. Each value is a multiplier on a CFG default, so
+// 1 is always "as designed" and the sliders read the same way.
+//
+// The ceiling on `pillar` is not a taste call, it is derived. One boost
+// lifts the raccoon boostSpeed^2 / (2 * gravity) = about 65 units. Clearing
+// an opening needs room for roughly two of those corrections on top of his
+// own height, so the smallest honest opening is about
+//   2 * 65 * 0.6 + 2 * raccoonRadius = 138
+// which is CFG.gapHeight / 1.25. Past that the gap is narrower than a
+// single jump arc and clearing it stops being skill.
+const SETTINGS_RANGE = {
+  speed:   { min: 0.5, max: 3.0,  step: 0.1,  label: 'GAME SPEED' },
+  pillar:  { min: 0.5, max: 1.25, step: 0.05, label: 'PILLAR HEIGHT' },
+  spacing: { min: 0.7, max: 1.6,  step: 0.05, label: 'PILLAR SPACING' },
+  jump:    { min: 0.6, max: 1.5,  step: 0.05, label: 'JUMP HEIGHT' },
+};
+const SETTINGS_ORDER = ['speed', 'pillar', 'spacing', 'jump'];
+const SETTINGS_DEFAULT = { speed: 1, pillar: 1, spacing: 1, jump: 1 };
+
+let settings = Object.assign({}, SETTINGS_DEFAULT);
+
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('wobbly-raccoon-settings') || '{}');
+    for (const k of SETTINGS_ORDER) {
+      const r = SETTINGS_RANGE[k];
+      if (typeof raw[k] === 'number' && isFinite(raw[k])) {
+        settings[k] = Math.min(r.max, Math.max(r.min, raw[k]));
+      }
+    }
+  } catch (e) { /* defaults stand */ }
+  applySettings();
+}
+
+function saveSettings() {
+  try { localStorage.setItem('wobbly-raccoon-settings', JSON.stringify(settings)); }
+  catch (e) {}
+}
+
+// The values the game actually runs on. Everything below reads these, not
+// CFG, so a settings change takes effect the moment it is made.
+let curSpeed, curGap, curSpacing, curGravity, curBoost, curMaxFall, curThrust;
+
+// GAME SPEED scales *time*, not just the scroll. Run the clock k times
+// faster and velocities go up by k while acceleration goes up by k squared.
+// Do that and the flight path keeps exactly the same shape - same jump
+// height, same number of flaps between pillars - it just plays faster.
+// Scaling only the scroll, as it did before, quietly shrank the gap in
+// time: at 3x there was not even one flap left between pillars.
+//
+// JUMP HEIGHT is the separate dial. Boost scales with its square root, so
+// the arc becomes exactly that much taller without touching the tempo.
+function applySettings() {
+  const k = settings.speed;
+  const j = settings.jump;
+
+  curSpeed   = CFG.scrollSpeed * k;
+  curGravity = CFG.gravity * k * k;
+  curBoost   = CFG.boostSpeed * k * Math.sqrt(j);
+  curMaxFall = CFG.maxFallSpeed * k;
+  curThrust  = CFG.thrustTime / k;
+
+  curGap     = Math.round(CFG.gapHeight / settings.pillar);
+  curSpacing = Math.round(CFG.obstacleSpacing * settings.spacing);
+}
+
+// how high one boost lifts him, in world units
+function jumpHeight() { return (curBoost * curBoost) / (2 * curGravity); }
+
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 3, name: '1.2' };
+const BUILD = { code: 4, name: '1.4' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';
@@ -217,15 +290,15 @@ function reset() {
 function fillObstacles() {
   if (obstacles.length === 0) addObstacle(viewRight + 220);
   let last = obstacles[obstacles.length - 1];
-  while (last.x < viewRight + CFG.obstacleSpacing) {
-    addObstacle(last.x + CFG.obstacleSpacing);
+  while (last.x < viewRight + curSpacing) {
+    addObstacle(last.x + curSpacing);
     last = obstacles[obstacles.length - 1];
   }
 }
 
 function addObstacle(x) {
   const min = CFG.gapMargin;
-  const max = Math.max(min, HORIZON - CFG.gapHeight - CFG.gapMargin);
+  const max = Math.max(min, HORIZON - curGap - CFG.gapMargin);
 
   // On a tall screen the gap could otherwise jump from the ceiling to the
   // floor between two pillars, which no amount of skill can clear. Each gap
@@ -259,10 +332,86 @@ function secondaryButton() {
   return { x: W / 2 - w / 2, y: s.y + s.h + 16, w: w, h: h };
 }
 
-// small round speaker toggle in the menu's top corner
+// small round toggles in the menu's top corner
 function muteButton() {
   const r = 26;
   return { x: W - r * 2 - 16, y: 18, w: r * 2, h: r * 2 };
+}
+
+function gearButton() {
+  const m = muteButton();
+  return { x: m.x - m.w - 12, y: m.y, w: m.w, h: m.h };
+}
+
+// the pause key, tucked in the corner during a run
+function pauseButton() {
+  const r = 23;
+  return { x: W - r * 2 - 14, y: 16, w: r * 2, h: r * 2 };
+}
+
+// ------------------------- SETTINGS SCREEN ---------------------------
+// The rows share out whatever vertical room the screen has, so four
+// sliders plus two buttons still fit on a short landscape window.
+function settingsRowGap() {
+  return Math.min(92, (H * 0.50) / SETTINGS_ORDER.length);
+}
+function settingsRowY(i) { return H * 0.25 + i * settingsRowGap(); }
+
+function sliderTrack(i) {
+  const w = Math.min(300, W - 96);
+  return { x: W / 2 - w / 2, y: settingsRowY(i) + 34, w: w, h: 12 };
+}
+
+// a generous touch target around the thin visual track
+function sliderHit(i) {
+  const t = sliderTrack(i);
+  return { x: t.x - 18, y: t.y - 26, w: t.w + 36, h: t.h + 52 };
+}
+
+function settingsBackButton() {
+  const w = 190, h = 56;
+  return { x: W / 2 - w / 2, y: settingsRowY(SETTINGS_ORDER.length) + 14, w: w, h: h };
+}
+
+function settingsResetButton() {
+  const b = settingsBackButton();
+  return { x: W / 2 - 80, y: b.y + b.h + 12, w: 160, h: 44 };
+}
+
+// turn a horizontal position on the track into a settings value
+function valueFromX(key, i, x) {
+  const t = sliderTrack(i);
+  const r = SETTINGS_RANGE[key];
+  const f = Math.min(1, Math.max(0, (x - t.x) / t.w));
+  const raw = r.min + f * (r.max - r.min);
+  const snapped = Math.round(Math.round(raw / r.step) * r.step * 100) / 100;
+  return Math.min(r.max, Math.max(r.min, snapped));
+}
+
+function sliderKnobX(key, i) {
+  const t = sliderTrack(i);
+  const r = SETTINGS_RANGE[key];
+  return t.x + t.w * ((settings[key] - r.min) / (r.max - r.min));
+}
+
+// which slider a drag is currently holding, if any
+let dragging = -1;
+
+function pauseMenuButtons() {
+  const cy = H * 0.45, w = 210, h = 62;
+  return {
+    resume: { x: W / 2 - w / 2, y: cy - 24, w: w, h: h },
+    home:   { x: W / 2 - w / 2, y: cy + 50, w: w, h: h },
+    mute:   { x: W / 2 - 26,    y: cy + 136, w: 52, h: 52 },
+  };
+}
+
+// How many full flaps fit between two pillars at the current settings.
+// Below 1 there is not even time for one correction, which is the point
+// where a fast setting stops being hard and starts being a coin toss.
+function flapsBetweenPillars() {
+  const flapTime = 2 * Math.abs(curBoost) / curGravity;
+  return (curSpacing / curSpeed) / flapTime;
 }
 
 function deadButtons() {
@@ -291,7 +440,7 @@ function press() {
 }
 
 function boost() {
-  raccoon.vy = CFG.boostSpeed;
+  raccoon.vy = curBoost;
   raccoon.sinceBoost = 0;
   for (let i = 0; i < 14; i++) spawnExhaust();
   sound('boost');
@@ -311,8 +460,45 @@ cv.addEventListener('pointerdown', function (e) {
 
   if (state === STATE.MENU) {
     if (inside(muteButton(), p))      { toggleMute(); return; }
+    if (inside(gearButton(), p))      { state = STATE.SETTINGS; return; }
     if (inside(secondaryButton(), p)) { secondaryAction(); return; }
     if (inside(startButton(), p))     { startRun(); return; }
+    return;
+  }
+
+  if (state === STATE.SETTINGS) {
+    for (let i = 0; i < SETTINGS_ORDER.length; i++) {
+      if (inside(sliderHit(i), p)) {
+        dragging = i;
+        settings[SETTINGS_ORDER[i]] = valueFromX(SETTINGS_ORDER[i], i, p.x);
+        applySettings();
+        return;
+      }
+    }
+    if (inside(settingsResetButton(), p)) {
+      settings = Object.assign({}, SETTINGS_DEFAULT);
+      applySettings();
+      saveSettings();
+      return;
+    }
+    if (inside(settingsBackButton(), p)) {
+      saveSettings();
+      state = STATE.MENU;
+      return;
+    }
+    return;
+  }
+
+  if (state === STATE.PAUSED) {
+    const b = pauseMenuButtons();
+    if (inside(b.mute, p))   { toggleMute(); return; }
+    if (inside(b.home, p))   { goToMenu(); return; }
+    if (inside(b.resume, p)) { state = STATE.PLAYING; return; }
+    return;
+  }
+
+  if (state === STATE.PLAYING && inside(pauseButton(), p)) {
+    state = STATE.PAUSED;
     return;
   }
 
@@ -331,8 +517,28 @@ cv.addEventListener('pointerdown', function (e) {
   press();
 });
 
+// dragging a slider keeps following the finger until it lifts
+window.addEventListener('pointermove', function (e) {
+  if (dragging < 0 || state !== STATE.SETTINGS) return;
+  e.preventDefault();
+  const key = SETTINGS_ORDER[dragging];
+  settings[key] = valueFromX(key, dragging, pointerWorld(e).x);
+  applySettings();
+});
+
+function endDrag() {
+  if (dragging >= 0) { dragging = -1; saveSettings(); }
+}
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
 window.addEventListener('keydown', function (e) {
-  if (e.code === 'Escape' && state === STATE.DEAD) { goToMenu(); return; }
+  if (e.code === 'Escape') {
+    if (state === STATE.DEAD)     { goToMenu(); return; }
+    if (state === STATE.SETTINGS) { saveSettings(); state = STATE.MENU; return; }
+    if (state === STATE.PLAYING)  { state = STATE.PAUSED; return; }
+    if (state === STATE.PAUSED)   { state = STATE.PLAYING; return; }
+  }
 
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
@@ -420,7 +626,7 @@ function spawnExhaust() {
     x: ox + (Math.random() - 0.5) * 5,
     y: oy + (Math.random() - 0.5) * 5,
     // perpendicular of (dirX, dirY) is (-dirY, dirX)
-    vx: dirX * speed - dirY * spread - CFG.scrollSpeed,  // drifts with the world
+    vx: dirX * speed - dirY * spread - curSpeed,  // drifts with the world
     vy: dirY * speed + dirX * spread,
     life: 0,
     span: smoke ? 0.5 + Math.random() * 0.4 : 0.16 + Math.random() * 0.18,
@@ -468,16 +674,19 @@ for (let i = 0; i < 46; i++) {
 
 // ---------------------------- UPDATE --------------------------------
 function update(dt) {
+  // a pause freezes the whole world, background included
+  if (state === STATE.PAUSED) return;
+
   // the background keeps moving even in the menu, so the scene feels alive
-  farOffset  = (farOffset  + CFG.scrollSpeed * 0.10 * dt) % SKYLINE_SPAN;
-  nearOffset = (nearOffset + CFG.scrollSpeed * 0.26 * dt) % SKYLINE_SPAN;
+  farOffset  = (farOffset  + curSpeed * 0.10 * dt) % SKYLINE_SPAN;
+  nearOffset = (nearOffset + curSpeed * 0.26 * dt) % SKYLINE_SPAN;
   // One growing counter for the ground; each layer takes its own remainder
   // from it. It wraps on a common multiple of every layer's spacing, so no
   // layer ever jumps sideways when the counter resets.
-  groundOffset = (groundOffset + CFG.scrollSpeed * dt) % GROUND_CYCLE;
+  groundOffset = (groundOffset + curSpeed * dt) % GROUND_CYCLE;
 
   for (const a of ash) {
-    a.x -= (CFG.scrollSpeed * 0.12 + a.fall * 0.35) * dt;
+    a.x -= (curSpeed * 0.12 + a.fall * 0.35) * dt;
     a.y += a.fall * dt;
     if (a.y > viewBottom) {
       a.y = viewTop - 4;
@@ -497,25 +706,26 @@ function update(dt) {
 
   if (state === STATE.PLAYING) {
     // --- physics ---
-    raccoon.vy += CFG.gravity * dt;
-    if (raccoon.vy > CFG.maxFallSpeed) raccoon.vy = CFG.maxFallSpeed;
+    raccoon.vy += curGravity * dt;
+    if (raccoon.vy > curMaxFall) raccoon.vy = curMaxFall;
     raccoon.y += raccoon.vy * dt;
     raccoon.sinceBoost += dt;
 
     // Tilt: only slightly nose-up while the rocket lifts him,
     // rotating towards straight-down as he falls.
-    const target = Math.max(-0.30, Math.min(1.45, raccoon.vy / 450));
-    raccoon.angle += (target - raccoon.angle) * Math.min(1, dt * 8);
+    // the thresholds are speed-relative, so he leans the same way at any tempo
+    const target = Math.max(-0.30, Math.min(1.45, raccoon.vy / (450 * settings.speed)));
+    raccoon.angle += (target - raccoon.angle) * Math.min(1, dt * 8 * settings.speed);
 
     // keep the flame alive for a moment after the tap
-    if (raccoon.sinceBoost < CFG.thrustTime) {
+    if (raccoon.sinceBoost < curThrust) {
       spawnExhaust();
       if (Math.random() < 0.6) spawnExhaust();
     }
 
     // --- obstacles ---
     for (const o of obstacles) {
-      o.x -= CFG.scrollSpeed * dt;
+      o.x -= curSpeed * dt;
       if (!o.scored && o.x + CFG.obstacleWidth < raccoon.x) {
         o.scored = true;
         score++;
@@ -537,9 +747,9 @@ function update(dt) {
 
   if (state === STATE.DEAD) {
     deadTime += dt;
-    raccoon.vy += CFG.gravity * dt;
+    raccoon.vy += curGravity * dt;
     raccoon.y += raccoon.vy * dt;
-    raccoon.angle += dt * 4;
+    raccoon.angle += dt * 4 * settings.speed;
     const floor = HORIZON - CFG.raccoonRadius;
     if (raccoon.y > floor) { raccoon.y = floor; raccoon.vy = 0; }
   }
@@ -564,7 +774,7 @@ function update(dt) {
   for (const s of starPops) {
     s.life += dt;
     s.y -= 46 * dt;
-    s.x -= CFG.scrollSpeed * 0.25 * dt;
+    s.x -= curSpeed * 0.25 * dt;
   }
   starPops = starPops.filter(function (s) { return s.life < 0.9; });
 }
@@ -576,8 +786,8 @@ function hitSomething() {
 
   for (const o of obstacles) {
     const top = { x: o.x, y: 0, w: CFG.obstacleWidth, h: o.gapY };
-    const bottom = { x: o.x, y: o.gapY + CFG.gapHeight, w: CFG.obstacleWidth,
-                     h: HORIZON - (o.gapY + CFG.gapHeight) };
+    const bottom = { x: o.x, y: o.gapY + curGap, w: CFG.obstacleWidth,
+                     h: HORIZON - (o.gapY + curGap) };
     if (circleHitsRect(raccoon.x, raccoon.y, CFG.raccoonRadius, top)) return true;
     if (circleHitsRect(raccoon.x, raccoon.y, CFG.raccoonRadius, bottom)) return true;
   }
@@ -595,7 +805,7 @@ function crash() {
   state = STATE.DEAD;
   deadTime = 0;
   shake = 1;
-  raccoon.vy = -180;
+  raccoon.vy = -180 * settings.speed;
   sound('crash');
   if (score > best) { best = score; saveBest(best); }
   saveStars();
@@ -686,7 +896,7 @@ function drawAsh() {
 
 function drawObstacle(o) {
   const w = CFG.obstacleWidth;
-  const bottomY = o.gapY + CFG.gapHeight;
+  const bottomY = o.gapY + curGap;
   // the lower pillar runs past the horizon so the ground buries its foot
   // instead of cutting it off in mid-air
   const bottomH = viewBottom - bottomY;
@@ -799,10 +1009,10 @@ function limb(x1, y1, x2, y2, w, fill) {
 // ---------------------- the raccoon on his rocket -------------------
 function drawRider() {
   const thrust = state === STATE.DEAD ? 0
-    : Math.max(0, 1 - raccoon.sinceBoost / CFG.thrustTime);
+    : Math.max(0, 1 - raccoon.sinceBoost / curThrust);
 
   // limbs and tail trail against the direction of travel
-  const drift = Math.max(-1, Math.min(1, raccoon.vy / 600));
+  const drift = Math.max(-1, Math.min(1, raccoon.vy / (600 * settings.speed)));
 
   ctx.save();
   ctx.translate(raccoon.x, raccoon.y);
@@ -1230,6 +1440,46 @@ function drawMuteButton(r) {
   }
 }
 
+function roundIcon(r, dim) {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r.w / 2, 0, Math.PI * 2);
+  ctx.fillStyle = dim ? 'rgba(32,28,40,.75)' : 'rgba(64,58,76,.85)';
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  return { cx: cx, cy: cy };
+}
+
+function drawGearButton(r) {
+  const c = roundIcon(r, false);
+  const teeth = 8, outer = 13, inner = 9;
+  ctx.fillStyle = '#f0e8dc';
+  ctx.beginPath();
+  for (let i = 0; i < teeth * 2; i++) {
+    const rad = i % 2 === 0 ? outer : inner;
+    const a = (i / (teeth * 2)) * Math.PI * 2;
+    const px = c.cx + Math.cos(a) * rad;
+    const py = c.cy + Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  // hub
+  ctx.beginPath();
+  ctx.arc(c.cx, c.cy, 4.6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(64,58,76,.95)';
+  ctx.fill();
+}
+
+function drawPauseKey(r) {
+  const c = roundIcon(r, false);
+  ctx.fillStyle = '#f0e8dc';
+  ctx.beginPath(); roundRectPath(c.cx - 8, c.cy - 9, 6, 18, 2); ctx.fill();
+  ctx.beginPath(); roundRectPath(c.cx + 2, c.cy - 9, 6, 18, 2); ctx.fill();
+}
+
 // the star counter, drawn as an icon plus a number
 function starCount(x, y, value, size) {
   ctx.textAlign = 'left';
@@ -1242,10 +1492,12 @@ function starCount(x, y, value, size) {
 function drawUI() {
   ctx.textAlign = 'center';
 
-  if (state === STATE.PLAYING || state === STATE.DEAD) {
+  if (state === STATE.PLAYING || state === STATE.PAUSED || state === STATE.DEAD) {
     outlinedText(String(score), W / 2, 96, 'bold 64px system-ui', '#fff', '#1d2b33', 7);
     starCount(22, 52, stars, 13);
   }
+
+  if (state === STATE.PLAYING) drawPauseKey(pauseButton());
 
   if (state === STATE.MENU) {
     outlinedText('WOBBLY', W / 2, H * 0.15, 'bold 54px system-ui', '#fff', '#1d2b33', 8);
@@ -1269,7 +1521,11 @@ function drawUI() {
     }
 
     drawMuteButton(muteButton());
+    drawGearButton(gearButton());
   }
+
+  if (state === STATE.SETTINGS) drawSettingsScreen();
+  if (state === STATE.PAUSED)   drawPauseScreen();
 
   if (state === STATE.READY) {
     const pulse = 0.6 + Math.sin(performance.now() / 260) * 0.4;
@@ -1313,6 +1569,85 @@ function drawUI() {
   }
 }
 
+function dimScene(alpha) {
+  ctx.fillStyle = 'rgba(16,13,22,' + alpha + ')';
+  ctx.fillRect(viewLeft, viewTop, viewRight - viewLeft, viewBottom - viewTop);
+}
+
+function drawSettingsScreen() {
+  dimScene(0.74);
+
+  ctx.textAlign = 'center';
+  outlinedText('SETTINGS', W / 2, H * 0.15, 'bold 42px system-ui', '#fff', '#1d2b33', 8);
+
+  for (let i = 0; i < SETTINGS_ORDER.length; i++) {
+    const key = SETTINGS_ORDER[i];
+    const r = SETTINGS_RANGE[key];
+    const t = sliderTrack(i);
+    const y = settingsRowY(i);
+    const decimals = r.step >= 0.1 ? 1 : 2;
+
+    ctx.textAlign = 'left';
+    outlinedText(r.label, t.x, y + 6, 'bold 19px system-ui', '#e7e2da', '#1d2b33', 5);
+    ctx.textAlign = 'right';
+    outlinedText(settings[key].toFixed(decimals) + '×', t.x + t.w, y + 6,
+                 'bold 22px system-ui', '#f0a45b', '#1d2b33', 5);
+
+    // track, then the filled part up to the knob
+    ctx.fillStyle = 'rgba(240,232,220,.2)';
+    ctx.beginPath(); roundRectPath(t.x, t.y, t.w, t.h, 6); ctx.fill();
+    const kx = sliderKnobX(key, i);
+    ctx.fillStyle = '#e07b39';
+    ctx.beginPath(); roundRectPath(t.x, t.y, Math.max(t.h, kx - t.x), t.h, 6); ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(kx, t.y + t.h / 2, 15, 0, Math.PI * 2);
+    ctx.fillStyle = dragging === i ? '#ffd9b0' : '#f5ede2';
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // the ends of the range, so the numbers mean something
+    ctx.font = '13px system-ui';
+    ctx.fillStyle = 'rgba(231,226,218,.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText(r.min.toFixed(decimals), t.x, t.y + 36);
+    ctx.textAlign = 'right';
+    ctx.fillText(r.max.toFixed(decimals), t.x + t.w, t.y + 36);
+  }
+
+  // a warning the numbers themselves justify
+  const flaps = flapsBetweenPillars();
+  if (flaps < 1.15) {
+    const t = sliderTrack(SETTINGS_ORDER.length - 1);
+    ctx.textAlign = 'center';
+    outlinedText(flaps < 0.85 ? 'No room for a single flap between pillars'
+                              : 'Barely one flap between pillars',
+                 W / 2, t.y + 66, 'bold 15px system-ui', '#ff9a6b', '#1d2b33', 4);
+  }
+
+  drawButton(settingsBackButton(), 'BACK', 'primary');
+  drawButton(settingsResetButton(), 'DEFAULTS', 'plain');
+}
+
+function drawPauseScreen() {
+  dimScene(0.6);
+
+  const b = pauseMenuButtons();
+  const cy = H * 0.45;
+  panel(W / 2, cy + 62, 272, 302);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#2b3a44';
+  ctx.font = 'bold 34px system-ui';
+  ctx.fillText('Paused', W / 2, cy - 48);
+
+  drawButton(b.resume, 'RESUME', 'primary');
+  drawButton(b.home, 'HOME', 'plain');
+  drawMuteButton(b.mute);
+}
+
 function panel(cx, cy, w, h) {
   ctx.fillStyle = 'rgba(0,0,0,.18)';
   ctx.beginPath(); roundRectPath(cx - w / 2, cy - h / 2 + 5, w, h, 16); ctx.fill();
@@ -1351,6 +1686,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+loadSettings();
 layout();
 reset();
 requestAnimationFrame(loop);

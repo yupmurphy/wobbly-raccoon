@@ -54,6 +54,25 @@ Everything worth adjusting lives in the `CFG` object at the top of `game.js`:
 The usable corridor is `gapHeight - 2 * raccoonRadius`, so raising the collision
 radius makes the game harder even though the gap is unchanged.
 
+### Player settings
+
+The settings screen multiplies those defaults, and the running game reads the
+derived `cur*` values rather than `CFG` directly.
+
+`GAME SPEED` scales *time*, not just the scroll: velocities by `k`, gravity by
+`k²`. The flight path therefore keeps its exact shape at any speed — the same
+jump height, the same 2.65 flaps between pillars — and only reaction time gets
+harder. Scaling the scroll alone, as an earlier build did, silently squeezed the
+gap in time until at 3× there was not one flap left between pillars.
+
+`JUMP HEIGHT` is the separate dial for arc shape: boost scales with its square
+root, so the arc grows by exactly that factor without touching the tempo.
+
+`PILLAR HEIGHT` stops at 1.25 for a derived reason. One boost lifts about 65
+units, the raccoon is 60 across, so at 1.25 the opening is 136 and the free
+corridor 76 — about 1.2 jump arcs, just enough to correct once inside the gap.
+Past that the corridor is smaller than a single arc and clearing it is luck.
+
 ## Building the Android app
 
 Needs Node.js, Android Studio with its SDK, and JDK 21 — the toolchain does not
