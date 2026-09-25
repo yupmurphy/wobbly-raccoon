@@ -318,7 +318,7 @@ function theme() { return THEMES[equipped.theme] || THEMES.ruins; }
 // ---------------------------- THIS BUILD -----------------------------
 // Bumped together with versionCode/versionName in android/app/build.gradle
 // and with docs/version.json, which is what the update check reads.
-const BUILD = { code: 8, name: '1.8' };
+const BUILD = { code: 9, name: '1.8.1' };
 
 const SITE        = 'https://yupmurphy.github.io/wobbly-raccoon/';
 const APK_URL     = SITE + 'WobblyRaccoon.apk';

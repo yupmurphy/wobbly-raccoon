@@ -73,16 +73,27 @@ units, the raccoon is 60 across, so at 1.25 the opening is 136 and the free
 corridor 76 — about 1.2 jump arcs, just enough to correct once inside the gap.
 Past that the corridor is smaller than a single arc and clearing it is luck.
 
+## Versioning
+
+`versionName` is what people see and grows a patch number for small
+changes: 1.8, 1.8.1, 1.8.2. `versionCode` is a plain integer that must go up
+on every build you hand out, or Android refuses to install over the previous
+one. Keep it in step in three places: `android/app/build.gradle`, the `BUILD`
+constant in `docs/game.js`, and `docs/version.json`, which is what the app's
+update check reads.
+
 ## Building the Android app
 
 Needs Node.js, Android Studio with its SDK, and JDK 21 — the toolchain does not
 accept newer Java versions yet.
 
 ```
-npx cap sync
-cd android && ./gradlew assembleDebug
+./build.sh
 ```
 
-The package lands in `android/app/build/outputs/apk/debug/`. Bump `versionCode`
-in `android/app/build.gradle` before distributing a new build, otherwise Android
-refuses to install it over the previous one.
+Use the script rather than calling Capacitor and Gradle by hand. `docs/` is
+Capacitor's webDir, so the published APK sitting in it gets copied *inside*
+the next build: leaving it there packed each version into the following one
+and took the download from 9 MB to 64 MB in three releases. The script clears
+the published APK before syncing, puts the fresh one back afterwards, and
+fails loudly if a build ever swallows another package again.
